@@ -1136,7 +1136,7 @@ class PluginManager {
         {
           width: windowWidth,
           height: viewHeight,
-          title: pluginConfig.name,
+          title: pluginConfig.title || pluginConfig.name,
           logo: logoUrl,
           searchQuery: '',
           searchPlaceholder: '搜索...'
@@ -1225,7 +1225,7 @@ class PluginManager {
         {
           width: windowWidth,
           height: viewHeight,
-          title: pluginConfig.name,
+          title: pluginConfig.title || pluginConfig.name,
           logo: cached.logo,
           searchQuery: cached.subInputValue || '',
           searchPlaceholder: cached.subInputPlaceholder || '搜索...',

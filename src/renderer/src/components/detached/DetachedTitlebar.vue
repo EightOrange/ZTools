@@ -2,7 +2,7 @@
   <div :class="['titlebar', platform]">
     <!-- macOS 不显示自定义交通灯，使用系统原生的 -->
 
-    <!-- 插件图标 -->
+    <!-- 插件图标和名称 -->
     <div class="plugin-info" @dblclick="handleDblClick">
       <div class="logo-container">
         <!-- AI 状态动画层 -->
@@ -18,6 +18,7 @@
         </div>
         <AdaptiveIcon v-if="pluginLogo" :src="pluginLogo" class="plugin-logo" alt="Plugin Logo" />
       </div>
+      <span v-if="pluginName" class="plugin-name">{{ pluginName }}</span>
     </div>
 
     <!-- 搜索栏 -->
@@ -301,7 +302,7 @@ onMounted(async () => {
   window.electron.ipcRenderer.on('init-titlebar', (data: any) => {
     console.log('收到标题栏初始化数据:', data)
     platform.value = data.platform
-    pluginName.value = data.pluginName
+    pluginName.value = data.title || data.pluginName
     pluginLogo.value = data.pluginLogo
 
     // 设置窗口标题
@@ -583,6 +584,7 @@ function sendKeyToPlugin(key: string): void {
 .plugin-info {
   display: flex;
   align-items: center;
+  gap: 8px;
   flex-shrink: 0;
   overflow: visible;
 }
@@ -731,6 +733,18 @@ function sendKeyToPlugin(key: string): void {
     transform: scale(0);
     opacity: 1;
   }
+}
+
+/* 插件名称 */
+.plugin-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--titlebar-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+  user-select: none;
 }
 
 /* 搜索栏 */
