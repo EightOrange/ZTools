@@ -32,30 +32,6 @@
       "cmds": ["Sleep", "睡眠"]
     },
     {
-      "code": "search",
-      "explain": "百度搜索",
-      "icon": "baidu-search.png",
-      "cmds": [
-        {
-          "type": "over",
-          "label": "百度搜索",
-          "minLength": 1
-        }
-      ]
-    },
-    {
-      "code": "bing-search",
-      "explain": "必应搜索",
-      "icon": "bing.png",
-      "cmds": [
-        {
-          "type": "over",
-          "label": "必应搜索",
-          "minLength": 1
-        }
-      ]
-    },
-    {
       "code": "open-url",
       "explain": "打开网址",
       "icon": "openurl.png",

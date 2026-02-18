@@ -7,6 +7,7 @@ import commandsAPI from '../renderer/commands.js'
 import pluginsAPI from '../renderer/plugins.js'
 import settingsAPI from '../renderer/settings.js'
 import systemAPI from '../renderer/system.js'
+import webSearchAPI from '../renderer/webSearch.js'
 import windowAPI from '../renderer/window.js'
 import databaseAPI from '../shared/database'
 import updaterAPI from '../updater.js'
@@ -615,6 +616,58 @@ export class InternalPluginAPI {
         return await handler(event, imagePath)
       }
       throw new Error('analyze-image handler not found')
+    })
+
+    // ==================== 网页快开 API ====================
+    ipcMain.handle('internal:web-search-get-all', async (event) => {
+      if (!requireInternalPlugin(this.pluginManager, event)) {
+        throw new PermissionDeniedError('internal:web-search-get-all')
+      }
+      try {
+        const engines = await (webSearchAPI as any).getAllEngines()
+        return { success: true, data: engines }
+      } catch (error: unknown) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : '未知错误'
+        }
+      }
+    })
+
+    ipcMain.handle('internal:web-search-add', async (event, engine: any) => {
+      if (!requireInternalPlugin(this.pluginManager, event)) {
+        throw new PermissionDeniedError('internal:web-search-add')
+      }
+      return await (webSearchAPI as any).addEngine(engine)
+    })
+
+    ipcMain.handle('internal:web-search-update', async (event, engine: any) => {
+      if (!requireInternalPlugin(this.pluginManager, event)) {
+        throw new PermissionDeniedError('internal:web-search-update')
+      }
+      return await (webSearchAPI as any).updateEngine(engine)
+    })
+
+    ipcMain.handle('internal:web-search-delete', async (event, engineId: string) => {
+      if (!requireInternalPlugin(this.pluginManager, event)) {
+        throw new PermissionDeniedError('internal:web-search-delete')
+      }
+      return await (webSearchAPI as any).deleteEngine(engineId)
+    })
+
+    ipcMain.handle('internal:web-search-fetch-favicon', async (event, url: string) => {
+      if (!requireInternalPlugin(this.pluginManager, event)) {
+        throw new PermissionDeniedError('internal:web-search-fetch-favicon')
+      }
+      try {
+        const icon = await (webSearchAPI as any).fetchFavicon(url)
+        return { success: true, data: icon }
+      } catch (error: unknown) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : '未知错误'
+        }
+      }
     })
 
     // ==================== 调试日志 API ====================

@@ -24,7 +24,7 @@
         v-if="activeMenu === 'plugins'"
         :search-query="props.searchQuery"
         :auto-open-plugin-name="autoOpenPluginName"
-        @auto-open-consumed="autoOpenPluginName = ''"
+        @auto-open-consumed="handleAutoOpenConsumed"
       />
 
       <!-- 插件市场 -->
@@ -57,6 +57,9 @@
       <!-- AI 模型管理 -->
       <AiModels v-if="activeMenu === 'ai-models'" :search-query="props.searchQuery" />
 
+      <!-- 网页快开 -->
+      <WebSearch v-if="activeMenu === 'web-search'" :search-query="props.searchQuery" />
+
       <!-- 安装插件 -->
       <PluginInstaller
         v-if="activeMenu === 'install-plugin'"
@@ -74,7 +77,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import Icon from '../common/Icon.vue'
 import AiModels from './AiModels.vue'
 import AllCommands from './AllCommands.vue'
@@ -87,6 +90,7 @@ import PluginCenter from './PluginCenter.vue'
 import PluginInstaller from './PluginInstaller.vue'
 import PluginMarket from './PluginMarket.vue'
 import SyncSettings from './SyncSettings.vue'
+import WebSearch from './WebSearch.vue'
 import AboutPage from './AboutPage.vue'
 
 // Props
@@ -94,6 +98,7 @@ interface Props {
   activePage: string
   searchQuery?: string
   installPluginFilePath?: string
+  autoOpenPluginName?: string
 }
 
 const props = defineProps<Props>()
@@ -101,6 +106,7 @@ const props = defineProps<Props>()
 // Emits
 const emit = defineEmits<{
   'update:activePage': [value: string]
+  'auto-open-consumed': []
 }>()
 
 // 菜单项类型
@@ -118,6 +124,7 @@ interface MenuItem {
     | 'brain'
     | 'info'
     | 'terminal'
+    | 'search'
   label: string
 }
 
@@ -128,6 +135,7 @@ const menuItems: MenuItem[] = [
   { id: 'plugins', icon: 'plugin', label: '已安装插件' },
   { id: 'market', icon: 'store', label: '插件市场' },
   { id: 'ai-models', icon: 'brain', label: 'AI 模型' },
+  { id: 'web-search', icon: 'search', label: '网页快开' },
   { id: 'data', icon: 'database', label: '我的数据' },
   { id: 'all-commands', icon: 'list', label: '所有指令' },
   { id: 'local-launch', icon: 'folder', label: '本地启动' },
@@ -145,8 +153,25 @@ const activeMenu = computed({
 // 全局快捷键页面的预填目标指令（从 AllCommands 导航过来时使用）
 const shortcutAutoAddTarget = ref('')
 
-// 安装成功后自动打开的插件名称
+// 自动打开的插件名称（合并外部传入和内部设置两个来源）
 const autoOpenPluginName = ref('')
+
+// 监听外部传入的 autoOpenPluginName prop
+watch(
+  () => props.autoOpenPluginName,
+  (name) => {
+    if (name) {
+      autoOpenPluginName.value = name
+    }
+  },
+  { immediate: true }
+)
+
+// 处理 PluginCenter 消费完 autoOpenPluginName 后的清理
+function handleAutoOpenConsumed(): void {
+  autoOpenPluginName.value = ''
+  emit('auto-open-consumed')
+}
 
 // 处理子组件导航请求
 function handleNavigate(page: string, params?: Record<string, string>): void {

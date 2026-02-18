@@ -15,6 +15,7 @@ import settingsAPI from './renderer/settings'
 import syncAPI from './renderer/sync'
 import systemAPI from './renderer/system'
 import { systemSettingsAPI } from './renderer/systemSettings'
+import webSearchAPI from './renderer/webSearch'
 import windowAPI from './renderer/window'
 
 // 插件专用API
@@ -66,6 +67,7 @@ class APIManager {
     systemSettingsAPI.init()
     syncAPI.init()
     localShortcutsAPI.init(mainWindow)
+    webSearchAPI.init()
 
     // 初始化插件API
     pluginAiAPI.init(mainWindow, pluginManager)

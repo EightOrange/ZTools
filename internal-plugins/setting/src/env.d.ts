@@ -305,6 +305,15 @@ declare global {
           delete: (id: string) => Promise<{ success: boolean; error?: string }>
         }
 
+        // 网页快开
+        webSearch: {
+          getAll: () => Promise<{ success: boolean; data?: any[]; error?: string }>
+          add: (engine: any) => Promise<{ success: boolean; error?: string }>
+          update: (engine: any) => Promise<{ success: boolean; error?: string }>
+          delete: (id: string) => Promise<{ success: boolean; error?: string }>
+          fetchFavicon: (url: string) => Promise<{ success: boolean; data?: string; error?: string }>
+        }
+
         // 超级面板
         updateSuperPanelConfig: (config: {
           enabled: boolean
