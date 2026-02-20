@@ -542,6 +542,9 @@ window.ztools = {
     // 通知主渲染进程更新 Tab 键目标指令
     updateTabTarget: async (target) =>
       await electron.ipcRenderer.invoke('internal:update-tab-target', target),
+    // 通知主渲染进程更新悬浮球双击目标指令
+    updateFloatingBallDoubleClickCommand: async (command) =>
+      await electron.ipcRenderer.invoke('internal:update-floating-ball-double-click-command', command),
     // 通知主渲染进程更新本地应用搜索配置
     updateLocalAppSearch: async (enabled) =>
       await electron.ipcRenderer.invoke('internal:update-local-app-search', enabled),

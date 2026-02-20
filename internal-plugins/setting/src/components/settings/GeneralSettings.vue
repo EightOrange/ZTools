@@ -61,44 +61,6 @@
           </label>
         </div>
       </div>
-
-      <div class="setting-item">
-        <div class="setting-label">
-          <span>显示悬浮球</span>
-          <span class="setting-desc"
-            >在桌面显示一个置顶悬浮球，点击可快速启动/隐藏主界面，支持拖入文件到悬浮球</span
-          >
-        </div>
-        <div class="setting-control">
-          <label class="toggle">
-            <input
-              v-model="floatingBallEnabled"
-              type="checkbox"
-              @change="handleFloatingBallChange"
-            />
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-      </div>
-
-      <div v-if="floatingBallEnabled" class="setting-item">
-        <div class="setting-label">
-          <span>悬浮球文字</span>
-          <span class="setting-desc">自定义悬浮球上显示的文字，默认为 Z</span>
-        </div>
-        <div class="setting-control">
-          <input
-            v-model="floatingBallLetter"
-            type="text"
-            class="input"
-            placeholder="Z"
-            maxlength="2"
-            style="width: 60px; text-align: center"
-            @blur="handleFloatingBallLetterChange"
-            @keyup.enter="handleFloatingBallLetterChange"
-          />
-        </div>
-      </div>
     </div>
 
     <!-- ==================== 外观 ==================== -->
@@ -558,6 +520,89 @@
       </div>
     </div>
 
+    <!-- ==================== 悬浮球 ==================== -->
+    <div class="setting-group">
+      <h3 class="setting-group-title">悬浮球</h3>
+
+      <div class="setting-item">
+        <div class="setting-label">
+          <span>显示悬浮球</span>
+          <span class="setting-desc"
+            >在桌面显示一个置顶悬浮球，点击可快速启动/隐藏主界面，支持拖入文件到悬浮球</span
+          >
+        </div>
+        <div class="setting-control">
+          <label class="toggle">
+            <input
+              v-model="floatingBallEnabled"
+              type="checkbox"
+              @change="handleFloatingBallChange"
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div v-if="floatingBallEnabled" class="setting-item">
+        <div class="setting-label">
+          <span>悬浮球文字</span>
+          <span class="setting-desc">自定义悬浮球上显示的文字，默认为 Z</span>
+        </div>
+        <div class="setting-control">
+          <input
+            v-model="floatingBallLetter"
+            type="text"
+            class="input"
+            placeholder="Z"
+            maxlength="2"
+            style="width: 60px; text-align: center"
+            @blur="handleFloatingBallLetterChange"
+            @keyup.enter="handleFloatingBallLetterChange"
+          />
+        </div>
+      </div>
+
+      <div v-if="floatingBallEnabled" class="setting-item">
+        <div class="setting-label">
+          <span>悬浮球双击目标指令</span>
+          <span class="setting-desc"
+            >配置后双击悬浮球可直接进入对应指令，常用于快速打开 AI 对话等场景</span
+          >
+        </div>
+        <div class="setting-control">
+          <input
+            v-model="floatingBallDoubleClickCommand"
+            type="text"
+            class="input"
+            placeholder="例如：AI助手/对话"
+            @blur="handleFloatingBallDoubleClickChange"
+            @keyup.enter="handleFloatingBallDoubleClickChange"
+          />
+          <button
+            class="btn btn-icon"
+            title="清除"
+            :style="{ visibility: floatingBallDoubleClickCommand ? 'visible' : 'hidden' }"
+            @click="handleClearFloatingBallDoubleClick"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 20 20"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M6 6L14 14M14 6L6 14"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- ==================== 网络 ==================== -->
     <div class="setting-group">
       <h3 class="setting-group-title">网络</h3>
@@ -769,6 +814,9 @@ const searchMode = ref<'aggregate' | 'list'>('aggregate')
 
 // Tab 键目标指令
 const tabTargetCommand = ref('')
+
+// 悬浮球双击目标指令
+const floatingBallDoubleClickCommand = ref('')
 
 // 超级面板设置
 const superPanelEnabled = ref(false)
@@ -1118,6 +1166,32 @@ async function handleClearTabTarget(): Promise<void> {
     console.log('Tab 键目标指令已清除')
   } catch (error) {
     console.error('清除 Tab 键目标指令失败:', error)
+  }
+}
+
+// 处理悬浮球双击目标指令变化
+async function handleFloatingBallDoubleClickChange(): Promise<void> {
+  try {
+    await saveSettings()
+    // 通知主渲染进程更新
+    await window.ztools.internal.updateFloatingBallDoubleClickCommand(
+      floatingBallDoubleClickCommand.value
+    )
+    console.log('悬浮球双击目标指令已更新:', floatingBallDoubleClickCommand.value)
+  } catch (error) {
+    console.error('保存悬浮球双击目标指令失败:', error)
+  }
+}
+
+// 清除悬浮球双击目标指令
+async function handleClearFloatingBallDoubleClick(): Promise<void> {
+  try {
+    floatingBallDoubleClickCommand.value = ''
+    await saveSettings()
+    await window.ztools.internal.updateFloatingBallDoubleClickCommand('')
+    console.log('悬浮球双击目标指令已清除')
+  } catch (error) {
+    console.error('清除悬浮球双击目标指令失败:', error)
   }
 }
 
@@ -1622,6 +1696,8 @@ async function loadSettings(): Promise<void> {
       autoCheckUpdate.value = data.autoCheckUpdate ?? true
       // Tab 键目标指令
       tabTargetCommand.value = data.tabTargetCommand ?? ''
+      // 悬浮球双击目标指令
+      floatingBallDoubleClickCommand.value = data.floatingBallDoubleClickCommand ?? ''
 
       // 超级面板配置
       superPanelEnabled.value = data.superPanelEnabled ?? false
@@ -1696,6 +1772,7 @@ async function saveSettings(): Promise<void> {
       pinnedRows: pinnedRows.value,
       searchMode: searchMode.value,
       tabTargetCommand: tabTargetCommand.value,
+      floatingBallDoubleClickCommand: floatingBallDoubleClickCommand.value,
       superPanelEnabled: superPanelEnabled.value,
       superPanelMouseButton: superPanelMouseButton.value,
       superPanelLongPressMs: superPanelLongPressMs.value,

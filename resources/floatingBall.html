@@ -142,12 +142,16 @@
     const fs = require('fs')
     const ball = document.getElementById('ball')
 
-    // ==================== 悬浮球移动（点击 + 拖拽） ====================
+    // ==================== 悬浮球移动（点击 + 拖拽 + 双击） ====================
     let isMouseDown = false
     let isDragging = false
     let startScreenX = 0
     let startScreenY = 0
     const DRAG_THRESHOLD = 5
+
+    // 双击检测
+    let lastClickTime = 0
+    const DOUBLE_CLICK_DELAY = 300 // 双击间隔 300ms
 
     ball.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return
@@ -189,7 +193,17 @@
         isDragging = false
         ipcRenderer.send('floating-ball-drag-end')
       } else {
-        ipcRenderer.send('floating-ball-click')
+        // 检测双击
+        const now = Date.now()
+        if (now - lastClickTime < DOUBLE_CLICK_DELAY) {
+          // 双击
+          ipcRenderer.send('floating-ball-double-click')
+          lastClickTime = 0 // 重置时间，避免三击被识别为两次双击
+        } else {
+          // 单击
+          ipcRenderer.send('floating-ball-click')
+          lastClickTime = now
+        }
       }
     })
 

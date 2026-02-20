@@ -627,6 +627,12 @@ onMounted(async () => {
     windowStore.updateTabTargetCommand(target)
   })
 
+  // 监听悬浮球双击目标指令更新事件
+  window.ztools.onUpdateFloatingBallDoubleClickCommand?.((command: string) => {
+    console.log('更新悬浮球双击目标指令:', command)
+    windowStore.updateFloatingBallDoubleClickCommand(command)
+  })
+
   // 监听搜索框模式更新事件
   window.ztools.onUpdateSearchMode((mode: string) => {
     windowStore.updateSearchMode(mode as 'aggregate' | 'list')
@@ -703,6 +709,19 @@ onMounted(async () => {
       searchBoxRef.value?.focus()
     })
     updateWindowHeight()
+  })
+
+  // 监听悬浮球双击事件
+  window.ztools.onFloatingBallDoubleClickCommand?.((command: string) => {
+    console.log('收到悬浮球双击事件，目标指令:', command)
+    if (!command) return
+
+    // 切换到搜索视图
+    currentView.value = ViewMode.Search
+    // 直接启动目标指令（不填充搜索框）
+    nextTick(() => {
+      launchTabTarget(command, '')
+    })
   })
 
   // 监听插件重定向搜索事件

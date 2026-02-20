@@ -58,6 +58,9 @@ export const useWindowStore = defineStore('window', () => {
   // Tab 键目标指令
   const tabTargetCommand = ref('')
 
+  // 悬浮球双击目标指令
+  const floatingBallDoubleClickCommand = ref('')
+
   // 当前插件信息
   const currentPlugin = ref<PluginInfo | null>(null)
   // 插件加载中状态（用于显示 loading 动效）
@@ -192,6 +195,10 @@ export const useWindowStore = defineStore('window', () => {
 
   function updateTabTargetCommand(value: string): void {
     tabTargetCommand.value = value
+  }
+
+  function updateFloatingBallDoubleClickCommand(value: string): void {
+    floatingBallDoubleClickCommand.value = value
   }
 
   function updateTheme(value: string): void {
@@ -505,6 +512,9 @@ export const useWindowStore = defineStore('window', () => {
         if (data.tabTargetCommand !== undefined) {
           tabTargetCommand.value = data.tabTargetCommand
         }
+        if (data.floatingBallDoubleClickCommand !== undefined) {
+          floatingBallDoubleClickCommand.value = data.floatingBallDoubleClickCommand
+        }
       } else {
         // 默认蓝色
         updatePrimaryColor('blue')
@@ -558,6 +568,8 @@ export const useWindowStore = defineStore('window', () => {
     updateSearchMode,
     tabTargetCommand,
     updateTabTargetCommand,
+    floatingBallDoubleClickCommand,
+    updateFloatingBallDoubleClickCommand,
     updateTheme,
     updatePrimaryColor,
     updateCustomColor,

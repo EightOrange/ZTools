@@ -177,6 +177,11 @@ const api = {
   onUpdateTabTarget: (callback: (target: string) => void) => {
     ipcRenderer.on('update-tab-target', (_event, target) => callback(target))
   },
+  onUpdateFloatingBallDoubleClickCommand: (callback: (command: string) => void) => {
+    ipcRenderer.on('update-floating-ball-double-click-command', (_event, command) =>
+      callback(command)
+    )
+  },
   onUpdateSearchMode: (callback: (mode: string) => void) => {
     ipcRenderer.on('update-search-mode', (_event, mode) => callback(mode))
   },
@@ -326,6 +331,9 @@ const api = {
     callback: (files: Array<{ path: string; name: string; isDirectory: boolean }>) => void
   ) => {
     ipcRenderer.on('floating-ball-files', (_event, files) => callback(files))
+  },
+  onFloatingBallDoubleClickCommand: (callback: (command: string) => void) => {
+    ipcRenderer.on('floating-ball-double-click-command', (_event, command) => callback(command))
   },
   updateSuperPanelPinnedOrder: (commands: any[]) =>
     ipcRenderer.invoke('super-panel:update-pinned-order', commands),
@@ -579,6 +587,7 @@ declare global {
       onFloatingBallFiles: (
         callback: (files: Array<{ path: string; name: string; isDirectory: boolean }>) => void
       ) => void
+      onFloatingBallDoubleClickCommand: (callback: (command: string) => void) => void
     }
   }
 }

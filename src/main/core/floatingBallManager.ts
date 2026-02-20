@@ -14,6 +14,7 @@ class FloatingBallManager {
   private ballWindow: BrowserWindow | null = null
   private enabled = false
   private letter = 'Z' // 悬浮球显示的文字，默认 Z
+  private doubleClickCommand = '' // 悬浮球双击目标指令
   // 拖拽状态：记录拖拽开始时鼠标相对窗口左上角的偏移
   private dragOffsetX = 0
   private dragOffsetY = 0
@@ -35,6 +36,7 @@ class FloatingBallManager {
       const data = await databaseAPI.dbGet('settings-general')
       this.enabled = data?.floatingBallEnabled ?? false
       this.letter = data?.floatingBallLetter || 'Z'
+      this.doubleClickCommand = data?.floatingBallDoubleClickCommand || ''
 
       if (this.enabled) {
         await this.createBallWindow()
@@ -59,6 +61,11 @@ class FloatingBallManager {
     // 悬浮球被点击 → 切换主窗口
     ipcMain.on('floating-ball-click', () => {
       this.handleBallClick()
+    })
+
+    // 悬浮球被双击 → 打开目标指令
+    ipcMain.on('floating-ball-double-click', () => {
+      this.handleBallDoubleClick()
     })
 
     // 拖拽开始 → 记录鼠标相对窗口的偏移
@@ -119,6 +126,16 @@ class FloatingBallManager {
     // 外部控制：获取悬浮球文字
     ipcMain.handle('floating-ball:get-letter', () => {
       return this.letter
+    })
+
+    // 外部控制：设置双击目标指令
+    ipcMain.handle('floating-ball:set-double-click-command', async (_event, command: string) => {
+      return this.setDoubleClickCommand(command)
+    })
+
+    // 外部控制：获取双击目标指令
+    ipcMain.handle('floating-ball:get-double-click-command', () => {
+      return this.doubleClickCommand
     })
   }
 
@@ -198,6 +215,31 @@ class FloatingBallManager {
     } else {
       windowManager.showWindow()
     }
+  }
+
+  /**
+   * 处理悬浮球双击
+   */
+  private handleBallDoubleClick(): void {
+    if (!this.doubleClickCommand) {
+      // 如果未配置双击指令，执行默认行为（打开/隐藏主窗口）
+      this.handleBallClick()
+      return
+    }
+
+    const mainWindow = windowManager.getMainWindow()
+    if (!mainWindow) return
+
+    // 显示主窗口并发送双击指令
+    windowManager.showWindow()
+
+    // 延迟发送指令，确保窗口完全打开
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('floating-ball-double-click-command', this.doubleClickCommand)
+        console.log('[FloatingBall] 悬浮球双击，触发指令:', this.doubleClickCommand)
+      }
+    }, 100)
   }
 
   /**
@@ -310,6 +352,25 @@ class FloatingBallManager {
       console.log('悬浮球文字已更新:', this.letter)
     } catch (error) {
       console.error('保存悬浮球文字失败:', error)
+    }
+
+    return { success: true }
+  }
+
+  /**
+   * 设置悬浮球双击目标指令
+   */
+  public async setDoubleClickCommand(command: string): Promise<{ success: boolean }> {
+    this.doubleClickCommand = command || ''
+
+    // 保存到数据库
+    try {
+      const data = (await databaseAPI.dbGet('settings-general')) || {}
+      data.floatingBallDoubleClickCommand = this.doubleClickCommand
+      await databaseAPI.dbPut('settings-general', data)
+      console.log('悬浮球双击目标指令已更新:', this.doubleClickCommand)
+    } catch (error) {
+      console.error('保存悬浮球双击目标指令失败:', error)
     }
 
     return { success: true }
