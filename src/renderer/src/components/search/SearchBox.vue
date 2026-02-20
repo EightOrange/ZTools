@@ -371,6 +371,16 @@ function onKeydown(event: KeyboardEvent): void {
     return
   }
 
+  // 检测 Command+, (Mac) 或 Ctrl+, (Windows/Linux) 快捷键 - 打开设置
+  if (event.key === ',' && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
+    event.preventDefault()
+    // 如果不在插件模式，直接打开设置
+    if (props.currentView !== 'plugin' || !windowStore.currentPlugin) {
+      window.ztools.openSettings()
+    }
+    return
+  }
+
   // 检测 Command+F (Mac) 或 Ctrl+F (Windows/Linux) 快捷键
   if (event.key === 'f' && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
     // 如果输入框有文本内容，将其转为二次筛选状态
