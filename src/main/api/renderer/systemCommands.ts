@@ -173,6 +173,11 @@ function handleWindowInfo(ctx: SystemCommandContext): any {
     { label: '应用位置', value: winInfo?.appPath || '未知' }
   ]
 
+  // macOS 平台添加 Bundle ID
+  if (process.platform === 'darwin' && winInfo?.bundleId) {
+    items.push({ label: '应用 ID', value: winInfo.bundleId })
+  }
+
   const infoRows = items
     .map(
       (item) =>
@@ -250,7 +255,7 @@ function handleWindowInfo(ctx: SystemCommandContext): any {
 
   const infoWindow = new BrowserWindow({
     width: 500,
-    height: 420,
+    height: 460,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
