@@ -3,6 +3,7 @@ import { app, dialog, ipcMain } from 'electron'
 import { promises as fs } from 'fs'
 import path from 'path'
 import { pathToFileURL } from 'url'
+import * as tar from 'tar'
 import { normalizeIconPath } from '../../common/iconUtils'
 import { isInternalPlugin } from '../../core/internalPlugins'
 import lmdbInstance from '../../core/lmdb/lmdbInstance'
@@ -112,6 +113,12 @@ export class PluginsAPI {
         return { success: false, error: error instanceof Error ? error.message : '获取失败' }
       }
     })
+
+    ipcMain.handle(
+      'install-plugin-from-npm',
+      (_event, options: { packageName: string; useChinaMirror?: boolean }) =>
+        this.installPluginFromNpm(options.packageName, options.useChinaMirror)
+    )
   }
 
   // 获取插件列表（过滤掉内置插件，用于插件中心显示）
@@ -1068,6 +1075,218 @@ export class PluginsAPI {
     } catch (error: unknown) {
       console.error('[Plugins] 获取插件数据失败:', error)
       return { success: false, error: error instanceof Error ? error.message : '获取失败' }
+    }
+  }
+
+  /**
+   * 从 npm 安装插件
+   * @param packageName npm 包名（支持作用域包，如 @ztools/example）
+   * @param useChinaMirror 是否使用国内镜像（默认 false）
+   */
+  private async installPluginFromNpm(packageName: string, useChinaMirror = false): Promise<any> {
+    try {
+      console.log('[Plugins] 开始从 npm 安装插件:', packageName)
+
+      // 1. 从 npm registry 获取包信息
+      const registryBase = useChinaMirror
+        ? 'https://registry.npmmirror.com'
+        : 'https://registry.npmjs.org'
+      const registryUrl = `${registryBase}/${packageName}`
+      console.log('[Plugins] 获取包信息:', registryUrl, useChinaMirror ? '(国内镜像)' : '')
+
+      let packageInfo: any
+      try {
+        const response = await httpGet(registryUrl)
+        packageInfo = typeof response.data === 'string' ? JSON.parse(response.data) : response.data
+      } catch (error) {
+        console.error('[Plugins] 获取包信息失败:', error)
+        return { success: false, error: '无法获取包信息，请检查包名是否正确' }
+      }
+
+      // 2. 获取最新版本的 tarball URL
+      const latestVersion = packageInfo['dist-tags']?.latest
+      if (!latestVersion) {
+        return { success: false, error: '无法获取最新版本信息' }
+      }
+
+      const versionInfo = packageInfo.versions?.[latestVersion]
+      if (!versionInfo) {
+        return { success: false, error: '无法获取版本详情' }
+      }
+
+      const tarballUrl = versionInfo.dist?.tarball
+      if (!tarballUrl) {
+        return { success: false, error: '无法获取下载链接' }
+      }
+
+      console.log('[Plugins] 最新版本:', latestVersion)
+      console.log('[Plugins] Tarball URL:', tarballUrl)
+
+      // 3. 创建临时目录并下载 tarball
+      const tempDir = path.join(app.getPath('temp'), 'ztools-npm-download')
+      await fs.mkdir(tempDir, { recursive: true })
+
+      const tarballPath = path.join(tempDir, `${Date.now()}.tgz`)
+      console.log('[Plugins] 下载 tarball 到:', tarballPath)
+
+      let retryCount = 0
+      const maxRetries = 3
+      while (retryCount < maxRetries) {
+        try {
+          await downloadFile(tarballUrl, tarballPath)
+          break
+        } catch (error) {
+          retryCount++
+          console.error(`下载失败，重试第 ${retryCount} 次:`, error)
+          if (retryCount >= maxRetries) throw error
+          await sleep(500)
+        }
+      }
+
+      // 4. 解压 tarball 到临时目录
+      const extractDir = path.join(tempDir, `extract-${Date.now()}`)
+      await fs.mkdir(extractDir, { recursive: true })
+
+      console.log('[Plugins] 解压 tarball 到:', extractDir)
+      await tar.extract({
+        file: tarballPath,
+        cwd: extractDir
+      })
+
+      // 5. npm tarball 的内容在 package/ 目录下
+      const packageDir = path.join(extractDir, 'package')
+      const pluginJsonPath = path.join(packageDir, 'plugin.json')
+
+      // 6. 检查 plugin.json 是否存在
+      try {
+        await fs.access(pluginJsonPath)
+      } catch {
+        // 清理临时文件
+        await fs.rm(tempDir, { recursive: true, force: true })
+        return { success: false, error: '这不是一个有效的 ZTools 插件包（缺少 plugin.json）' }
+      }
+
+      // 7. 读取并验证 plugin.json
+      const pluginJsonContent = await fs.readFile(pluginJsonPath, 'utf-8')
+      let pluginConfig: any
+      try {
+        pluginConfig = JSON.parse(pluginJsonContent)
+      } catch {
+        await fs.rm(tempDir, { recursive: true, force: true })
+        return { success: false, error: 'plugin.json 格式错误' }
+      }
+
+      if (!pluginConfig.name) {
+        await fs.rm(tempDir, { recursive: true, force: true })
+        return { success: false, error: 'plugin.json 缺少 name 字段' }
+      }
+
+      const pluginName = pluginConfig.name
+      const targetPath = path.join(PLUGIN_DIR, pluginName)
+
+      // 8. 检查是否已安装（覆盖安装逻辑）
+      const existingPlugins: any[] = (await databaseAPI.dbGet('plugins')) || []
+      const existingIndex = existingPlugins.findIndex((p: any) => p.name === pluginName)
+
+      if (existingIndex !== -1) {
+        console.log('[Plugins] 插件已存在，执行覆盖安装:', pluginName)
+
+        // 终止正在运行的插件
+        try {
+          await this.pluginManager?.killPluginByName?.(pluginName)
+        } catch {
+          // 忽略终止错误
+        }
+
+        // 从数据库中移除旧记录
+        existingPlugins.splice(existingIndex, 1)
+        await databaseAPI.dbPut('plugins', existingPlugins)
+
+        // 删除旧目录
+        try {
+          await fs.rm(targetPath, { recursive: true, force: true })
+          console.log('[Plugins] 已删除旧插件目录:', targetPath)
+        } catch {
+          // 忽略删除错误
+        }
+      }
+
+      // 9. 移动到插件目录
+      await fs.mkdir(PLUGIN_DIR, { recursive: true })
+      await fs.rename(packageDir, targetPath)
+
+      console.log('[Plugins] 插件已安装到:', targetPath)
+
+      // 10. 验证插件配置
+      const validation = await this.validatePluginConfig(pluginConfig, existingPlugins)
+      if (!validation.valid) {
+        // 安装失败，清理目录
+        await fs.rm(targetPath, { recursive: true, force: true })
+        await fs.rm(tempDir, { recursive: true, force: true })
+        return { success: false, error: validation.error }
+      }
+
+      // 11. 保存到数据库
+      const pluginInfo = {
+        name: pluginConfig.name,
+        title: pluginConfig.title,
+        version: pluginConfig.version,
+        description: pluginConfig.description || '',
+        author: pluginConfig.author || '',
+        homepage: pluginConfig.homepage || '',
+        logo: pluginConfig.logo ? pathToFileURL(path.join(targetPath, pluginConfig.logo)).href : '',
+        main: pluginConfig.main,
+        preload: pluginConfig.preload,
+        features: pluginConfig.features,
+        path: targetPath,
+        isDevelopment: false,
+        installedAt: new Date().toISOString(),
+        installedFrom: 'npm'
+      }
+
+      let plugins: any = await databaseAPI.dbGet('plugins')
+      if (!plugins) plugins = []
+      plugins.push(pluginInfo)
+      await databaseAPI.dbPut('plugins', plugins)
+
+      // 12. 清理临时文件
+      try {
+        await fs.rm(tempDir, { recursive: true, force: true })
+      } catch (e) {
+        console.error('[Plugins] 清理临时文件失败:', e)
+      }
+
+      // 13. 输出新增的指令
+      console.log('[Plugins] \n=== 从 npm 安装插件成功 ===')
+      console.log(`npm 包名: ${packageName}`)
+      console.log(`插件名称: ${pluginConfig.name}`)
+      console.log(`插件版本: ${pluginConfig.version}`)
+      console.log('[Plugins] 新增指令列表:')
+      pluginConfig.features?.forEach((feature: any, index: number) => {
+        console.log(`  [${index + 1}] ${feature.code} - ${feature.explain || '无说明'}`)
+
+        const formattedCmds = feature.cmds
+          .map((cmd: any) => {
+            if (typeof cmd === 'string') {
+              return cmd
+            } else if (typeof cmd === 'object' && cmd !== null) {
+              const type = cmd.type || 'unknown'
+              const label = cmd.label || type
+              return `[${type}] ${label}`
+            }
+            return String(cmd)
+          })
+          .join(', ')
+
+        console.log(`      关键词: ${formattedCmds}`)
+      })
+      console.log('[Plugins] =========================\n')
+
+      this.mainWindow?.webContents.send('plugins-changed')
+      return { success: true, plugin: pluginInfo }
+    } catch (error: unknown) {
+      console.error('[Plugins] 从 npm 安装插件失败:', error)
+      return { success: false, error: error instanceof Error ? error.message : '安装失败' }
     }
   }
 }

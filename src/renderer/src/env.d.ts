@@ -75,6 +75,14 @@ declare global {
         error?: string
         plugin?: any
       }>
+      installPluginFromNpm: (options: {
+        packageName: string
+        useChinaMirror?: boolean
+      }) => Promise<{
+        success: boolean
+        error?: string
+        plugin?: any
+      }>
       getPluginReadme: (pluginPath: string) => Promise<{
         success: boolean
         content?: string

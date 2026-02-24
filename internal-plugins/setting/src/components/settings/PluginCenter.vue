@@ -4,31 +4,91 @@
     <Transition name="list-slide">
       <div v-show="!isDetailVisible" class="scrollable-content">
         <div class="panel-header">
-          <div class="filter-group">
+          <div class="tab-group">
             <button
-              class="filter-btn"
+              class="tab-btn"
               :class="{ active: filterStatus === 'all' }"
               @click="filterStatus = 'all'"
             >
               全部
-              <span class="count-badge">{{ allPluginsCount }}</span>
+              <span class="tab-count">{{ allPluginsCount }}</span>
             </button>
             <button
-              class="filter-btn"
+              class="tab-btn"
               :class="{ active: filterStatus === 'running' }"
               @click="filterStatus = 'running'"
             >
               运行中
-              <span class="count-badge">{{ runningPluginsCount }}</span>
+              <span class="tab-count">{{ runningPluginsCount }}</span>
             </button>
           </div>
           <div class="button-group">
-            <button class="btn btn-purple" :disabled="isImportingDev" @click="importDevPlugin">
-              {{ isImportingDev ? '添加中...' : '添加开发中插件' }}
-            </button>
             <button class="btn" :disabled="isImporting" @click="importPlugin">
               {{ isImporting ? '导入中...' : '导入本地插件' }}
             </button>
+            <div class="more-menu-wrapper">
+              <button class="btn" @click="toggleMoreMenu">
+                更多
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  style="margin-left: 4px"
+                >
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
+              <div v-if="showMoreMenu" class="more-menu" @click="closeMoreMenu">
+                <button
+                  class="more-menu-item"
+                  :disabled="isImportingDev"
+                  @click="importDevPlugin"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M12 5v14M5 12h14"></path>
+                  </svg>
+                  {{ isImportingDev ? '添加中...' : '添加开发中插件' }}
+                </button>
+                <button
+                  class="more-menu-item"
+                  :disabled="isImportingNpm"
+                  @click="showNpmInstallPanel"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                  {{ isImportingNpm ? '安装中...' : '从 npm 安装' }}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -200,7 +260,7 @@
     <!-- 插件详情覆盖面板组件 -->
     <Transition name="slide">
       <PluginDetail
-        v-if="isDetailVisible && selectedPlugin"
+        v-if="isDetailVisible && selectedPlugin && !showNpmPanel"
         :plugin="selectedPlugin"
         :is-running="isPluginRunning(selectedPlugin.path)"
         @back="closePluginDetail"
@@ -210,6 +270,17 @@
         @open-folder="handleOpenFolder(selectedPlugin)"
         @package="handlePackagePlugin(selectedPlugin)"
         @reload="handleReloadPluginFromDetail(selectedPlugin)"
+      />
+    </Transition>
+
+    <!-- npm 安装面板 -->
+    <Transition name="slide">
+      <NpmInstallPanel
+        v-if="showNpmPanel"
+        ref="npmInstallPanelRef"
+        :visible="showNpmPanel"
+        @back="closeNpmPanel"
+        @install="handleInstallFromNpm"
       />
     </Transition>
   </div>
@@ -222,6 +293,7 @@ import { weightedSearch } from '../../utils/weightedSearch'
 import AdaptiveIcon from '../common/AdaptiveIcon.vue'
 import Icon from '../common/Icon.vue'
 import PluginDetail from './PluginDetail.vue'
+import NpmInstallPanel from './NpmInstallPanel.vue'
 
 const props = defineProps<{
   searchQuery?: string
@@ -243,14 +315,20 @@ const runningPlugins = ref<string[]>([])
 const isLoading = ref(true)
 const isImporting = ref(false)
 const isImportingDev = ref(false)
+const isImportingNpm = ref(false)
 const isDeleting = ref(false)
 const isKilling = ref(false)
 const isReloading = ref(false)
 const isPackaging = ref(false)
 
+// npm 安装相关状态
+const showNpmPanel = ref(false)
+const showMoreMenu = ref(false)
+
 // 详情弹窗状态
 const isDetailVisible = ref(false)
 const selectedPlugin = ref<any | null>(null)
+const npmInstallPanelRef = ref<InstanceType<typeof NpmInstallPanel>>()
 
 // 过滤状态
 const filterStatus = ref<'all' | 'running'>('all')
@@ -353,6 +431,8 @@ async function importDevPlugin(): Promise<void> {
     if (result.success) {
       // 重新加载插件列表
       await loadPlugins()
+      // 关闭更多菜单
+      showMoreMenu.value = false
       success('开发中插件添加成功!')
     } else {
       error(`添加开发中插件失败: ${result.error}`)
@@ -566,9 +646,25 @@ async function handlePackagePlugin(plugin: any): Promise<void> {
 
 // 处理 ESC 按键
 function handleKeydown(e: KeyboardEvent): void {
-  if (e.key === 'Escape' && isDetailVisible.value) {
-    e.stopPropagation()
-    closePluginDetail()
+  if (e.key === 'Escape') {
+    if (showNpmPanel.value) {
+      e.stopPropagation()
+      closeNpmPanel()
+    } else if (showMoreMenu.value) {
+      e.stopPropagation()
+      showMoreMenu.value = false
+    } else if (isDetailVisible.value) {
+      e.stopPropagation()
+      closePluginDetail()
+    }
+  }
+}
+
+// 处理点击外部关闭更多菜单
+function handleClickOutside(e: MouseEvent): void {
+  const target = e.target as HTMLElement
+  if (!target.closest('.more-menu-wrapper')) {
+    showMoreMenu.value = false
   }
 }
 
@@ -578,6 +674,7 @@ onMounted(async () => {
   // 如果有需要自动打开的插件，加载完成后打开详情
   tryAutoOpenPlugin()
   window.addEventListener('keydown', handleKeydown, true)
+  window.addEventListener('click', handleClickOutside)
 
   // 监听插件进入事件，确保每次进入时刷新状态
   window.ztools.onPluginEnter(async (action) => {
@@ -596,6 +693,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown, true)
+  window.removeEventListener('click', handleClickOutside)
 })
 
 // 监听 autoOpenPluginName 变化（从其他页面导航过来时）
@@ -640,6 +738,66 @@ function openPluginDetail(plugin: any): void {
 function closePluginDetail(): void {
   isDetailVisible.value = false
   selectedPlugin.value = null
+}
+
+// 显示 npm 安装面板
+function showNpmInstallPanel(): void {
+  showNpmPanel.value = true
+  showMoreMenu.value = false
+}
+
+// 关闭 npm 安装面板
+function closeNpmPanel(): void {
+  if (isImportingNpm.value) return
+  showNpmPanel.value = false
+  npmInstallPanelRef.value?.resetForm()
+}
+
+// 切换更多菜单
+function toggleMoreMenu(): void {
+  showMoreMenu.value = !showMoreMenu.value
+}
+
+// 关闭更多菜单
+function closeMoreMenu(event?: Event): void {
+  // 如果点击的是菜单项，不阻止事件
+  if (event && (event.target as HTMLElement).closest('.more-menu-item')) {
+    return
+  }
+  showMoreMenu.value = false
+}
+
+// 从 npm 安装插件
+async function handleInstallFromNpm(data: {
+  packageName: string
+  useChinaMirror: boolean
+}): Promise<void> {
+  if (isImportingNpm.value) return
+
+  isImportingNpm.value = true
+  try {
+    const result = await window.ztools.internal.installPluginFromNpm({
+      packageName: data.packageName,
+      useChinaMirror: data.useChinaMirror
+    })
+    if (result.success) {
+      // 先设置加载状态为 false，这样 closeNpmPanel 才能正常关闭
+      isImportingNpm.value = false
+      // 重新加载插件列表
+      await loadPlugins()
+      // 关闭面板
+      closeNpmPanel()
+      // 显示成功提示
+      success(`插件 "${data.packageName}" 安装成功！`)
+    } else {
+      error(`安装失败: ${result.error}`)
+    }
+  } catch (err: any) {
+    console.error('从 npm 安装插件失败:', err)
+    error(`安装失败: ${err.message || '未知错误'}`)
+  } finally {
+    isImportingNpm.value = false
+  }
 }
 </script>
 
@@ -703,50 +861,52 @@ function closePluginDetail(): void {
   margin-bottom: 20px;
 }
 
-.filter-group {
+.tab-group {
   display: flex;
-  gap: 8px;
+  gap: 6px;
+  background: var(--control-bg);
+  padding: 3px;
+  border-radius: 8px;
 }
 
-.filter-btn {
-  display: inline-flex;
+.tab-btn {
+  display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 6px 14px;
   font-size: 13px;
-  font-weight: 500;
+  border: none;
+  background: transparent;
   color: var(--text-secondary);
-  background: var(--control-bg);
-  border: 1px solid var(--control-border);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
+  font-weight: 500;
 }
 
-.filter-btn:hover {
+.tab-btn:hover {
   background: var(--hover-bg);
   color: var(--text-color);
 }
 
-.filter-btn.active {
+.tab-btn.active {
+  background: var(--active-bg);
+  color: var(--primary-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.tab-count {
+  font-size: 11px;
+  padding: 2px 6px;
+  background: var(--control-bg);
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+}
+
+.tab-btn.active .tab-count {
   background: var(--primary-light-bg);
   color: var(--primary-color);
-  border-color: var(--primary-color);
-  font-weight: 600;
-}
-
-.count-badge {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 10px;
-  background: var(--active-bg);
-  color: var(--text-secondary);
-}
-
-.filter-btn.active .count-badge {
-  background: var(--primary-color);
-  color: var(--text-on-primary);
 }
 
 .button-group {
@@ -945,5 +1105,59 @@ function closePluginDetail(): void {
 .empty-feature {
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+/* 更多菜单样式 */
+.more-menu-wrapper {
+  position: relative;
+  z-index: 10000;
+}
+
+.more-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: #ffffff;
+  border: 1px solid var(--divider-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 180px;
+  padding: 4px;
+  z-index: 10001;
+}
+
+@media (prefers-color-scheme: dark) {
+  .more-menu {
+    background: #1e1e1e;
+  }
+}
+
+.more-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-color);
+  font-size: 14px;
+  text-align: left;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.more-menu-item:hover:not(:disabled) {
+  background: var(--hover-bg);
+}
+
+.more-menu-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.more-menu-item svg {
+  flex-shrink: 0;
 }
 </style>

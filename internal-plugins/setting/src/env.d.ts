@@ -93,6 +93,14 @@ declare global {
           error?: string
           plugin?: any
         }>
+        installPluginFromNpm: (options: {
+          packageName: string
+          useChinaMirror?: boolean
+        }) => Promise<{
+          success: boolean
+          error?: string
+          plugin?: any
+        }>
 
         // 插件数据管理
         getPluginReadme: (pluginPath: string) => Promise<{
