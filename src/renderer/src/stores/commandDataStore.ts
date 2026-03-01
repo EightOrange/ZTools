@@ -341,7 +341,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
     try {
       const [data, plugins] = await Promise.all([
         window.ztools.dbGet(PINNED_DOC_ID),
-        window.ztools.getPlugins()
+        window.ztools.getAllPlugins()
       ])
 
       if (data && Array.isArray(data)) {
@@ -540,7 +540,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
       // 3. 加载系统设置（仅 Windows 平台）
       let settingCommands: Command[] = []
       try {
-        const isWindows = await window.ztools.isWindows()
+        const isWindows = window.ztools.getPlatform() === 'win32'
         if (isWindows) {
           const settings = await window.ztools.getSystemSettings()
           settingCommands = settings.map((s: any) => ({

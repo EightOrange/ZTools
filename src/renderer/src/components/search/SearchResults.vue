@@ -119,6 +119,26 @@ const { mainPushGroups, handleMainPushSelect } = useMainPushResults(props)
 const scrollContainerRef = ref<HTMLElement>()
 const showRecentInSearch = computed(() => windowStore.showRecentInSearch)
 
+// 超级面板固定列表缓存
+const superPanelPinned = ref<any[]>([])
+
+async function loadSuperPanelPinned(): Promise<void> {
+  try {
+    superPanelPinned.value = await window.ztools.getSuperPanelPinned()
+  } catch {
+    superPanelPinned.value = []
+  }
+}
+
+function isPinnedToSuperPanel(app: any): boolean {
+  return superPanelPinned.value.some((item) => {
+    if (app.featureCode) {
+      return item.path === app.path && item.featureCode === app.featureCode
+    }
+    return item.path === app.path && item.name === app.name
+  })
+}
+
 // 是否有搜索内容
 const hasSearchContent = computed(() => {
   return !!(props.searchQuery.trim() || props.pastedImage || props.pastedText || props.pastedFiles)
@@ -464,10 +484,19 @@ async function handleAppContextMenu(
 
   // 如果是应用（不是插件和系统设置，且不是协议链接），显示"打开文件位置"
   const isProtocolLink = /^[a-zA-Z][a-zA-Z0-9+\-.]*:/.test(app.path) && !app.path.includes('\\')
-  if (app.type !== 'system-setting' && app.type !== 'plugin' && app.path && !isProtocolLink) {
+  const isLocalApp = app.type !== 'system-setting' && app.type !== 'plugin' && app.path && !isProtocolLink
+  if (isLocalApp) {
     menuItems.push({
       id: `reveal-in-finder:${JSON.stringify({ path: app.path })}`,
       label: '打开文件位置'
+    })
+  }
+
+  // Windows 本地应用显示"以管理员身份运行"
+  if (isLocalApp && window.ztools.getPlatform() === 'win32') {
+    menuItems.push({
+      id: `launch-as-admin:${JSON.stringify({ path: app.path, name: app.name })}`,
+      label: '以管理员身份运行'
     })
   }
 
@@ -475,7 +504,7 @@ async function handleAppContextMenu(
   if (isPinned(app.path, app.featureCode, app.name)) {
     menuItems.push({
       id: `unpin-app:${JSON.stringify({ path: app.path, featureCode: app.featureCode, name: app.name })}`,
-      label: '取消固定'
+      label: '从搜索框取消固定'
     })
   } else {
     menuItems.push({
@@ -492,15 +521,25 @@ async function handleAppContextMenu(
       })}`,
       label: '固定到搜索框'
     })
+  }
+
+  // 超级面板固定/取消固定
+  if (isPinnedToSuperPanel(app)) {
     menuItems.push({
-      id: `pin-to-super-panel:${JSON.stringify({
+      id: `unpin-super-panel:${JSON.stringify({ path: app.path, featureCode: app.featureCode })}`,
+      label: '从超级面板取消固定'
+    })
+  } else {
+    menuItems.push({
+      id: `pin-super-panel:${JSON.stringify({
         name: app.name,
         path: app.path,
         icon: app.icon,
         type: app.type,
         featureCode: app.featureCode,
         pluginName: app.pluginName,
-        pluginExplain: app.pluginExplain
+        pluginExplain: app.pluginExplain,
+        cmdType: app.cmdType
       })}`,
       label: '固定到超级面板'
     })
@@ -793,6 +832,14 @@ async function handleContextMenuCommand(command: string): Promise<void> {
     } catch (error) {
       console.error('打开文件位置失败:', error)
     }
+  } else if (command.startsWith('launch-as-admin:')) {
+    const jsonStr = command.replace('launch-as-admin:', '')
+    try {
+      const { path: appPath, name } = JSON.parse(jsonStr)
+      await window.ztools.launchAsAdmin(appPath, name)
+    } catch (error) {
+      console.error('管理员启动失败:', error)
+    }
   } else if (command.startsWith('toggle-auto-kill:')) {
     const pluginName = command.replace('toggle-auto-kill:', '')
     try {
@@ -868,16 +915,23 @@ async function handleContextMenuCommand(command: string): Promise<void> {
     } catch (error: any) {
       console.error('切换自动分离配置失败:', error)
     }
-  } else if (command.startsWith('pin-to-super-panel:')) {
-    const appJson = command.replace('pin-to-super-panel:', '')
+  } else if (command.startsWith('pin-super-panel:')) {
+    const appJson = command.replace('pin-super-panel:', '')
     try {
       const app = JSON.parse(appJson)
       await window.ztools.pinToSuperPanel(app)
-      nextTick(() => {
-        emit('focus-input')
-      })
+      await loadSuperPanelPinned()
     } catch (error) {
       console.error('固定到超级面板失败:', error)
+    }
+  } else if (command.startsWith('unpin-super-panel:')) {
+    const jsonStr = command.replace('unpin-super-panel:', '')
+    try {
+      const { path, featureCode } = JSON.parse(jsonStr)
+      await window.ztools.unpinSuperPanelCommand(path, featureCode)
+      await loadSuperPanelPinned()
+    } catch (error) {
+      console.error('从超级面板取消固定失败:', error)
     }
   }
 }
@@ -903,6 +957,7 @@ function resetCollapseState(): void {
 // 初始化
 onMounted(() => {
   window.ztools.onContextMenuCommand(handleContextMenuCommand)
+  loadSuperPanelPinned()
 })
 
 // 导出方法供父组件调用

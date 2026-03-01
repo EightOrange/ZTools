@@ -309,7 +309,6 @@ const DISABLED_COMMANDS_KEY = 'disable-commands'
 
 // 超级面板固定列表
 const superPanelPinned = ref<any[]>([])
-const SUPER_PANEL_PINNED_KEY = 'super-panel-pinned'
 
 // 搜索窗口固定列表
 const searchPinned = ref<any[]>([])
@@ -387,10 +386,7 @@ async function loadDisabledCommands(): Promise<void> {
 // 加载超级面板固定列表
 async function loadSuperPanelPinned(): Promise<void> {
   try {
-    const data = await window.ztools.internal.dbGet(SUPER_PANEL_PINNED_KEY)
-    if (data && Array.isArray(data)) {
-      superPanelPinned.value = data
-    }
+    superPanelPinned.value = await window.ztools.internal.getSuperPanelPinned()
   } catch (error) {
     console.error('加载超级面板固定列表失败:', error)
   }
@@ -420,15 +416,14 @@ async function toggleSuperPanelPin(
   const isPinned = isPinnedToSuperPanel(pluginName, featureCode, cmdName)
 
   if (isPinned) {
-    // 取消固定
-    superPanelPinned.value = superPanelPinned.value.filter(
-      (item) =>
-        !(
-          item.name === cmdName &&
-          item.featureCode === featureCode &&
-          item.pluginName === pluginName
-        )
+    // 取消固定 - 需要找到对应的 path
+    const item = superPanelPinned.value.find(
+      (i) =>
+        i.name === cmdName && i.featureCode === featureCode && i.pluginName === pluginName
     )
+    if (item) {
+      await window.ztools.internal.unpinSuperPanelCommand(item.path, item.featureCode)
+    }
   } else {
     // 查找对应的指令信息
     const command = commands.value.find(
@@ -437,7 +432,7 @@ async function toggleSuperPanelPin(
     )
 
     if (command) {
-      superPanelPinned.value.push({
+      await window.ztools.internal.pinToSuperPanel({
         name: command.name,
         path: command.path || '',
         icon: command.icon || '',
@@ -450,13 +445,8 @@ async function toggleSuperPanelPin(
     }
   }
 
-  // 保存到数据库
-  try {
-    const plainArray = JSON.parse(JSON.stringify(superPanelPinned.value))
-    await window.ztools.internal.dbPut(SUPER_PANEL_PINNED_KEY, plainArray)
-  } catch (error) {
-    console.error('保存超级面板固定列表失败:', error)
-  }
+  // 刷新本地缓存
+  await loadSuperPanelPinned()
 }
 
 // 固定/取消固定系统应用到超级面板
@@ -464,11 +454,9 @@ async function toggleAppSuperPanelPin(cmd: Command): Promise<void> {
   const isPinned = isAppPinnedToSuperPanel(cmd)
 
   if (isPinned) {
-    superPanelPinned.value = superPanelPinned.value.filter(
-      (item) => !(item.path === cmd.path && item.name === cmd.name && item.type === 'direct')
-    )
+    await window.ztools.internal.unpinSuperPanelCommand(cmd.path || '', cmd.featureCode)
   } else {
-    superPanelPinned.value.push({
+    await window.ztools.internal.pinToSuperPanel({
       name: cmd.name,
       path: cmd.path || '',
       icon: cmd.icon || '',
@@ -480,12 +468,8 @@ async function toggleAppSuperPanelPin(cmd: Command): Promise<void> {
     })
   }
 
-  try {
-    const plainArray = JSON.parse(JSON.stringify(superPanelPinned.value))
-    await window.ztools.internal.dbPut(SUPER_PANEL_PINNED_KEY, plainArray)
-  } catch (error) {
-    console.error('保存超级面板固定列表失败:', error)
-  }
+  // 刷新本地缓存
+  await loadSuperPanelPinned()
 }
 
 // 加载搜索窗口固定列表

@@ -1,4 +1,5 @@
 import { app, ipcMain, shell } from 'electron'
+import { spawn } from 'child_process'
 import type { PluginManager } from '../../managers/pluginManager'
 import { promises as fs } from 'fs'
 import path from 'path'
@@ -75,6 +76,9 @@ export class AppsAPI {
     ipcMain.handle('get-apps', () => this.getApps())
     ipcMain.handle('get-commands', () => this.getCommands())
     ipcMain.handle('launch', (_event, options: any) => this.launch(options))
+    ipcMain.handle('launch-as-admin', (_event, appPath: string, name?: string) =>
+      this.launchAsAdmin(appPath, name)
+    )
     ipcMain.handle('refresh-apps-cache', () => this.refreshAppsCache())
 
     // 历史记录管理
@@ -445,6 +449,40 @@ export class AppsAPI {
       }
     } catch (error) {
       console.error('[Commands] 启动失败:', error)
+      throw error
+    }
+  }
+
+  /**
+   * 以管理员身份启动应用（仅 Windows）
+   */
+  private async launchAsAdmin(appPath: string, name?: string): Promise<void> {
+    if (process.platform !== 'win32') {
+      throw new Error('仅支持 Windows 平台')
+    }
+
+    try {
+      // 使用 PowerShell Start-Process -Verb RunAs 触发 UAC 提权
+      const escapedPath = appPath.replace(/'/g, "''")
+      const psCommand = `Start-Process -FilePath '${escapedPath}' -Verb RunAs`
+
+      const subprocess = spawn(
+        'powershell.exe',
+        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psCommand],
+        { detached: true, stdio: 'ignore' }
+      )
+      subprocess.unref()
+
+      console.log(`[Commands] 以管理员身份启动: ${appPath}`)
+
+      // 添加到历史记录
+      this.addToHistory({ path: appPath, type: 'app', name, cmdType: 'text' })
+
+      // 通知渲染进程应用已启动
+      this.notifyRenderer('app-launched')
+      this.mainWindow?.hide()
+    } catch (error) {
+      console.error('[Commands] 管理员启动失败:', error)
       throw error
     }
   }

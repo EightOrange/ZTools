@@ -21,6 +21,8 @@ const api = {
     cmdType?: string
     confirmDialog?: any
   }) => ipcRenderer.invoke('launch', options),
+  launchAsAdmin: (appPath: string, name?: string) =>
+    ipcRenderer.invoke('launch-as-admin', appPath, name),
   hideWindow: () => ipcRenderer.send('hide-window'),
   resizeWindow: (height: number) => ipcRenderer.send('resize-window', height),
   getWindowPosition: () => ipcRenderer.invoke('get-window-position'),
@@ -348,6 +350,7 @@ const api = {
   unpinSuperPanelCommand: (path: string, featureCode?: string) =>
     ipcRenderer.invoke('super-panel:unpin-command', path, featureCode),
   pinToSuperPanel: (command: any) => ipcRenderer.invoke('super-panel:pin-command', command),
+  getSuperPanelPinned: () => ipcRenderer.invoke('super-panel:get-pinned'),
   onSuperPanelLaunch: (callback: (data: { command: any; clipboardContent?: any }) => void) => {
     ipcRenderer.on('super-panel-launch', (_event, data) => callback(data))
   },

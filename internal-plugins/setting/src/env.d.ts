@@ -352,6 +352,12 @@ declare global {
           mouseButton: string
           longPressMs: number
         }) => Promise<{ success: boolean }>
+        pinToSuperPanel: (command: any) => Promise<{ success: boolean; error?: string }>
+        unpinSuperPanelCommand: (
+          path: string,
+          featureCode?: string
+        ) => Promise<{ success: boolean; error?: string }>
+        getSuperPanelPinned: () => Promise<any[]>
 
         // 通知主渲染进程禁用指令列表已更改
         notifyDisabledCommandsChanged: () => Promise<{ success: boolean }>

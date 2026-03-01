@@ -634,6 +634,57 @@ class SuperPanelManager {
       }
     )
 
+    // 固定命令到超级面板
+    ipcMain.handle('super-panel:pin-command', async (_event, command: any) => {
+      try {
+        let pinnedCommands = await databaseAPI.dbGet('super-panel-pinned')
+        if (!Array.isArray(pinnedCommands)) {
+          pinnedCommands = []
+        }
+
+        // 检查是否已存在（避免重复添加）
+        const exists = pinnedCommands.some((cmd: any) => {
+          if (command.featureCode) {
+            return cmd.path === command.path && cmd.featureCode === command.featureCode
+          }
+          return cmd.path === command.path && cmd.name === command.name
+        })
+
+        if (!exists) {
+          pinnedCommands.push({
+            name: command.name,
+            path: command.path || '',
+            icon: command.icon || '',
+            type: command.type,
+            featureCode: command.featureCode || '',
+            pluginName: command.pluginName || '',
+            pluginExplain: command.pluginExplain || '',
+            cmdType: command.cmdType || 'text'
+          })
+          await databaseAPI.dbPut('super-panel-pinned', pinnedCommands)
+          this.loadPinnedCommands()
+        }
+
+        return { success: true }
+      } catch (error) {
+        console.error('[SuperPanel] 固定到超级面板失败:', error)
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : '未知错误'
+        }
+      }
+    })
+
+    // 获取超级面板固定列表
+    ipcMain.handle('super-panel:get-pinned', async () => {
+      try {
+        const pinnedCommands = await databaseAPI.dbGet('super-panel-pinned')
+        return Array.isArray(pinnedCommands) ? pinnedCommands : []
+      } catch {
+        return []
+      }
+    })
+
     // 超级面板请求窗口匹配搜索 → 转发给主渲染进程
     ipcMain.handle(
       'super-panel:search-window-commands',

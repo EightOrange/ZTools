@@ -634,6 +634,12 @@ window.ztools = {
     // ==================== 超级面板 API ====================
     updateSuperPanelConfig: async (config) =>
       await electron.ipcRenderer.invoke('internal:update-super-panel-config', config),
+    pinToSuperPanel: async (command) =>
+      await electron.ipcRenderer.invoke('super-panel:pin-command', command),
+    unpinSuperPanelCommand: async (path, featureCode) =>
+      await electron.ipcRenderer.invoke('super-panel:unpin-command', path, featureCode),
+    getSuperPanelPinned: async () =>
+      await electron.ipcRenderer.invoke('super-panel:get-pinned'),
 
     // ==================== AI 模型管理 API ====================
     aiModels: {

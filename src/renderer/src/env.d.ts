@@ -32,6 +32,7 @@ declare global {
         cmdType?: string // cmd 类型（用于判断是否添加历史记录）
         confirmDialog?: any // 确认对话框配置
       }) => Promise<any>
+      launchAsAdmin: (appPath: string, name?: string) => Promise<void>
       hideWindow: () => void
       resizeWindow: (height: number) => void
       getWindowPosition: () => Promise<{ x: number; y: number }>
@@ -354,7 +355,8 @@ declare global {
         path: string,
         featureCode?: string
       ) => Promise<{ success: boolean; error?: string }>
-      pinToSuperPanel: (command: any) => Promise<{ success: boolean; error?: string; message?: string }>
+      pinToSuperPanel: (command: any) => Promise<{ success: boolean; error?: string }>
+      getSuperPanelPinned: () => Promise<any[]>
       onSuperPanelLaunch: (
         callback: (data: { command: any; clipboardContent?: any }) => void
       ) => void
