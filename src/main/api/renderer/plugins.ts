@@ -1,5 +1,5 @@
 import type { PluginManager } from '../../managers/pluginManager'
-import { app, dialog, ipcMain } from 'electron'
+import { app, dialog, ipcMain, shell } from 'electron'
 import { promises as fs } from 'fs'
 import path from 'path'
 import { pathToFileURL } from 'url'
@@ -996,6 +996,9 @@ export class PluginsAPI {
 
       // 使用 zpxArchive 打包
       await packZpx(pluginPath, result.filePath)
+
+      // 打开文件管理器并选中打包后的文件
+      shell.showItemInFolder(result.filePath)
 
       console.log('[Plugins] 插件打包成功:', result.filePath)
       return { success: true }
