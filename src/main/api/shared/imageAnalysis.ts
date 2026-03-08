@@ -96,7 +96,7 @@ async function analyzeImage(imagePath: string): Promise<ImageAnalysisResult> {
     // 3. 获取原始像素数据（不缩放，避免插值产生的杂色）
     const size = image.getSize()
     // 强制转换为 Buffer 以避免 TypeScript 错误
-    const data = image.getBitmap() as unknown as Buffer
+    const data = image.toBitmap()
 
     // 4. 像素抽样分析
     // 为了性能，我们不需要遍历几百万个像素，只需要均匀抽样约 1000-2000 个点即可
