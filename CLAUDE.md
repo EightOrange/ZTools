@@ -454,6 +454,10 @@ interface DbDoc {
 - `plugin-screen:*` - 屏幕功能（截图等）
 - `plugin-internal:*` - 内置插件专用 API（更高权限）
 
+**图像处理 API**（直接在 preload 中通过 `require('sharp')` 提供，无需 IPC）：
+
+- `ztools.sharp([input], [options])` - 获取 Sharp 实例，支持所有链式方法（resize/rotate/toBuffer/toFile 等）
+
 **事件推送**（Main → Renderer）：
 
 - `focus-search` - 显示搜索窗口
