@@ -1,9 +1,191 @@
 import { BrowserWindow, BrowserWindowConstructorOptions, session } from 'electron'
 import path from 'path'
-import { v4 as uuidv4 } from 'uuid'
 import mainPreload from '../../../resources/preload.js?asset'
 import proxyManager from '../managers/proxyManager'
 import { GLOBAL_SCROLLBAR_CSS } from './globalStyles'
+
+/**
+ * 插件可用的 BrowserWindow / WebContents 方法白名单
+ *
+ * 严格对齐 utools Fe 常量，不增不减。
+ * 计数：windowMethods(94) + windowInvokes(1) + webContentsMethods(59) + webContentsInvokes(11) = 165
+ */
+export const winIpc = {
+  windowMethods: [
+    'destroy',
+    'close',
+    'focus',
+    'blur',
+    'isFocused',
+    'isDestroyed',
+    'show',
+    'showInactive',
+    'hide',
+    'isVisible',
+    'maximize',
+    'unmaximize',
+    'isMaximized',
+    'minimize',
+    'restore',
+    'isMinimized',
+    'setFullScreen',
+    'isFullScreen',
+    'setSimpleFullScreen',
+    'isSimpleFullScreen',
+    'isNormal',
+    'setAspectRatio',
+    'setBackgroundColor',
+    'previewFile',
+    'closeFilePreview',
+    'setBounds',
+    'getBounds',
+    'getBackgroundColor',
+    'setContentBounds',
+    'getContentBounds',
+    'getNormalBounds',
+    'setEnabled',
+    'isEnabled',
+    'setSize',
+    'getSize',
+    'setContentSize',
+    'getContentSize',
+    'setMinimumSize',
+    'getMinimumSize',
+    'setMaximumSize',
+    'getMaximumSize',
+    'setResizable',
+    'isResizable',
+    'setMovable',
+    'isMovable',
+    'setMinimizable',
+    'isMinimizable',
+    'setMaximizable',
+    'isMaximizable',
+    'setFullScreenable',
+    'isFullScreenable',
+    'setClosable',
+    'isClosable',
+    'setAlwaysOnTop',
+    'isAlwaysOnTop',
+    'moveAbove',
+    'moveTop',
+    'center',
+    'setPosition',
+    'getPosition',
+    'setTitle',
+    'getTitle',
+    'setSheetOffset',
+    'flashFrame',
+    'setSkipTaskbar',
+    'setKiosk',
+    'isKiosk',
+    'isTabletMode',
+    'getMediaSourceId',
+    'getNativeWindowHandle',
+    'setRepresentedFilename',
+    'getRepresentedFilename',
+    'setDocumentEdited',
+    'isDocumentEdited',
+    'focusOnWebView',
+    'blurWebView',
+    'setProgressBar',
+    'setHasShadow',
+    'hasShadow',
+    'setOpacity',
+    'getOpacity',
+    'setShape',
+    'showDefinitionForSelection',
+    'setIcon',
+    'setWindowButtonVisibility',
+    'setVisibleOnAllWorkspaces',
+    'isVisibleOnAllWorkspaces',
+    'setIgnoreMouseEvents',
+    'setContentProtection',
+    'setFocusable',
+    'setAutoHideCursor',
+    'setVibrancy',
+    'setTrafficLightPosition',
+    'getTrafficLightPosition'
+  ] as const,
+
+  windowInvokes: ['capturePage'] as const,
+
+  webContentsMethods: [
+    'isDestroyed',
+    'focus',
+    'isFocused',
+    'isLoading',
+    'isLoadingMainFrame',
+    'isWaitingForResponse',
+    'isCrashed',
+    'setUserAgent',
+    'getUserAgent',
+    'setIgnoreMenuShortcuts',
+    'setAudioMuted',
+    'isAudioMuted',
+    'isCurrentlyAudible',
+    'setZoomFactor',
+    'getZoomFactor',
+    'setZoomLevel',
+    'getZoomLevel',
+    'undo',
+    'redo',
+    'cut',
+    'copy',
+    'copyImageAt',
+    'paste',
+    'pasteAndMatchStyle',
+    'delete',
+    'selectAll',
+    'unselect',
+    'replace',
+    'replaceMisspelling',
+    'findInPage',
+    'stopFindInPage',
+    'isBeingCaptured',
+    'incrementCapturerCount',
+    'decrementCapturerCount',
+    'getPrinters',
+    'openDevTools',
+    'closeDevTools',
+    'isDevToolsOpened',
+    'isDevToolsFocused',
+    'toggleDevTools',
+    'send',
+    'sendToFrame',
+    'enableDeviceEmulation',
+    'disableDeviceEmulation',
+    'sendInputEvent',
+    'showDefinitionForSelection',
+    'isOffscreen',
+    'startPainting',
+    'stopPainting',
+    'isPainting',
+    'setFrameRate',
+    'getFrameRate',
+    'invalidate',
+    'getWebRTCIPHandlingPolicy',
+    'setWebRTCIPHandlingPolicy',
+    'getOSProcessId',
+    'getProcessId',
+    'getBackgroundThrottling',
+    'setBackgroundThrottling'
+  ] as const,
+
+  webContentsInvokes: [
+    'insertCSS',
+    'removeInsertedCSS',
+    'executeJavaScript',
+    'executeJavaScriptInIsolatedWorld',
+    'setVisualZoomLevelLimits',
+    'insertText',
+    'capturePage',
+    'print', // 特殊处理：callback→Promise 包装
+    'printToPDF',
+    'savePage',
+    'takeHeapSnapshot'
+  ] as const
+} as const
 
 /**
  * 插件窗口信息
@@ -16,38 +198,27 @@ interface PluginWindowInfo {
 }
 
 class PluginWindowManager {
-  private windowInfoMap: Map<string, PluginWindowInfo> = new Map()
-  private taskMap: Map<string, Promise<any>> = new Map()
-  private taskCounter = 0
+  /** win.id → 窗口信息 */
+  private windowInfoMap: Map<number, PluginWindowInfo> = new Map()
 
   /**
    * 创建插件独立窗口
-   * @param pluginPath 插件根目录
-   * @param pluginName 插件名称(用于 session partition)
-   * @param url 相对路径
-   * @param options 窗口配置
-   * @param callbackId 回调ID (用于通知渲染进程)
-   * @param senderWebContents 发送请求的 WebContents (用于发送回调)
+   * @returns win.id（数字）
    */
   public createWindow(
     pluginPath: string,
     pluginName: string,
     url: string,
     options: BrowserWindowConstructorOptions,
-    callbackId: string,
     senderWebContents: Electron.WebContents
-  ): string {
-    const windowId = uuidv4()
-
-    // 处理 preload 路径 (如果是相对路径)
+  ): BrowserWindow {
+    // 处理 preload 路径（如果是相对路径）
     let preloadPath = options.webPreferences?.preload
     if (preloadPath && !path.isAbsolute(preloadPath)) {
       preloadPath = path.join(pluginPath, preloadPath)
     }
 
-    console.log('[PluginWindow] 子窗口 preloadPath', preloadPath, pluginPath)
-
-    // 使用插件名称创建 session,确保和插件主视图共享同一个 session
+    // 使用插件名称创建 session，确保和插件主视图共享同一个 session
     const sess = session.fromPartition('persist:' + pluginName)
     sess.registerPreloadScript({
       type: 'frame',
@@ -56,11 +227,10 @@ class PluginWindowManager {
 
     // 应用代理配置到插件 session
     proxyManager.applyProxyToSession(sess, `插件窗口 ${pluginName}`).catch((error) => {
-      console.error(`[PluginWindow] 插件窗口 ${pluginName} 应用代理配置失败:`, error)
+      console.error(`[pluginWindow:create] 插件窗口 ${pluginName} 应用代理配置失败:`, error)
     })
 
-    // 合并配置
-    const windowOptions: BrowserWindowConstructorOptions = {
+    const win = new BrowserWindow({
       ...options,
       webPreferences: {
         ...options.webPreferences,
@@ -71,220 +241,87 @@ class PluginWindowManager {
         webSecurity: false,
         sandbox: false
       }
-    }
+    })
 
-    const win = new BrowserWindow(windowOptions)
-
-    // 保存窗口信息
-    this.windowInfoMap.set(windowId, {
+    // 保存窗口信息（以 win.id 为键）
+    this.windowInfoMap.set(win.id, {
       window: win,
       parentWebContents: senderWebContents,
       pluginPath,
       pluginName
     })
 
-    // 处理 URL (如果是相对路径)
-    let loadUrl = url
-    if (!url.startsWith('http') && !url.startsWith('file:///')) {
-      loadUrl = `file:///${path.join(pluginPath, url)}`
+    // 加载 URL
+    if (url.startsWith('http')) {
+      win.loadURL(url)
+    } else if (url.startsWith('file:///')) {
+      win.loadURL(url)
+    } else {
+      const loadUrl = `file:///${path.join(pluginPath, url)}`
+      win.loadURL(loadUrl)
     }
 
-    win.loadURL(loadUrl)
+    // 子窗口 dom-ready 时触发父窗口 callback（与 utools 一致）
+    win.webContents.on('dom-ready', () => {
+      if (senderWebContents.isDestroyed()) return
 
-    // 监听加载完成
-    win.webContents.on('did-finish-load', () => {
-      // 注入全局滚动条样式
+      // 注入全局滚动条样式 + 默认字体
       win.webContents.insertCSS(GLOBAL_SCROLLBAR_CSS)
+      win.webContents.insertCSS(
+        'body { font-family: system-ui, "PingFang SC", "Helvetica Neue", "Microsoft Yahei", sans-serif; }'
+      )
 
-      if (callbackId && !senderWebContents.isDestroyed()) {
-        senderWebContents.send(`browser-window-loaded-${callbackId}`, windowId)
-      }
+      // 在父窗口触发 callback（与 utools executeJavaScript 方式一致）
+      senderWebContents.executeJavaScript(
+        `if (window.ztools && window.ztools.__event__ && typeof window.ztools.__event__.createBrowserWindowCallback === 'function') {
+          try { window.ztools.__event__.createBrowserWindowCallback() } catch(e) {}
+          delete window.ztools.__event__.createBrowserWindowCallback
+        }`
+      )
+      console.debug(`[pluginWindow:callback] dom-ready → trigger parent callback, winId=${win.id}`)
     })
 
     // 监听窗口关闭
     win.on('closed', () => {
-      this.windowInfoMap.delete(windowId)
+      console.info(`[pluginWindow:destroy] winId=${win.id} unregistered from plugin=${pluginName}`)
+      this.windowInfoMap.delete(win.id)
     })
 
-    return windowId
+    console.info(`[pluginWindow:create] plugin=${pluginName} winId=${win.id} url=${url}`)
+
+    return win
+  }
+
+  /**
+   * 根据 win.id 获取窗口所属的插件名称（用于所有权校验）
+   */
+  public getPluginNameByWindowId(winId: number): string | null {
+    return this.windowInfoMap.get(winId)?.pluginName ?? null
   }
 
   /**
    * 发送消息到父窗口
    */
   public sendToParent(senderWebContents: Electron.WebContents, channel: string, args: any[]): void {
-    // 查找包含该 webContents 的窗口信息
-    for (const windowInfo of Array.from(this.windowInfoMap.values())) {
+    const senderId = senderWebContents.id
+    for (const windowInfo of this.windowInfoMap.values()) {
       if (windowInfo.window.webContents === senderWebContents) {
         const parent = windowInfo.parentWebContents
         if (parent && !parent.isDestroyed()) {
-          parent.send(channel, ...args)
+          parent.send('__ipc_sendto_relay__', { senderId, channel, args })
           return
         }
         break
       }
     }
-    console.warn('[PluginWindow] 父窗口不存在或已销毁')
-  }
-
-  /**
-   * 获取对象成员
-   */
-  private getMember(win: BrowserWindow, path: string[]): any {
-    let current: any = win
-    for (const prop of path) {
-      if (current === undefined || current === null) return undefined
-      current = current[prop]
-    }
-    return current
-  }
-
-  /**
-   * 执行方法
-   */
-  public executeMethod(windowId: string, path: string[], args: any[]): any {
-    console.log('[PluginWindow] executeMethod', windowId, path, args)
-    const windowInfo = this.windowInfoMap.get(windowId)
-    if (!windowInfo) return null
-
-    const win = windowInfo.window
-
-    // 获取方法所在的上下文对象
-    const methodPath = [...path]
-    const methodName = methodPath.pop()
-
-    if (!methodName) return null
-
-    const context = this.getMember(win, methodPath)
-    if (!context) return null
-
-    const method = context[methodName]
-    if (typeof method === 'function') {
-      return method.apply(context, args)
-    }
-    return null
-  }
-
-  /**
-   * 同步尝试执行方法，如果返回 Promise 则缓存
-   */
-  public callMethodSync(
-    windowId: string,
-    path: string[],
-    args: any[]
-  ): { type: 'value'; data: any } | { type: 'promise'; taskId: string } {
-    const windowInfo = this.windowInfoMap.get(windowId)
-    if (!windowInfo) return { type: 'value', data: null }
-
-    const win = windowInfo.window
-
-    // 获取方法所在的上下文对象
-    const methodPath = [...path]
-    const methodName = methodPath.pop()
-
-    if (!methodName) return { type: 'value', data: null }
-
-    const context = this.getMember(win, methodPath)
-    if (!context) return { type: 'value', data: null }
-
-    const method = context[methodName]
-    if (typeof method !== 'function') {
-      return { type: 'value', data: null }
-    }
-
-    // 执行方法
-    const result = method.apply(context, args)
-
-    // 检查结果是否为 Promise
-    if (result instanceof Promise) {
-      const taskId = `task_${this.taskCounter++}`
-      this.taskMap.set(taskId, result)
-
-      // 清理：Promise 完成后一段时间自动清除
-      result.finally(() => {
-        setTimeout(() => {
-          this.taskMap.delete(taskId)
-        }, 60000) // 60秒后清理
-      })
-
-      return { type: 'promise', taskId }
-    }
-
-    // 同步结果
-    return { type: 'value', data: result }
-  }
-
-  /**
-   * 等待异步任务完成
-   */
-  public async waitForTask(taskId: string): Promise<any> {
-    const promise = this.taskMap.get(taskId)
-    if (!promise) {
-      throw new Error(`Task ${taskId} not found`)
-    }
-
-    try {
-      const result = await promise
-      return result
-    } finally {
-      // 任务完成后立即清理
-      this.taskMap.delete(taskId)
-    }
-  }
-
-  /**
-   * 获取属性值
-   */
-  public getPropertyByPath(windowId: string, path: string[]): any {
-    console.log('[PluginWindow] getPropertyByPath', windowId, path)
-    const windowInfo = this.windowInfoMap.get(windowId)
-    if (!windowInfo) return null
-
-    return this.getMember(windowInfo.window, path)
-  }
-
-  /**
-   * 获取属性信息 (用于同步调用)
-   */
-  public getPropertyInfo(windowId: string, path: string[]): { type: string; value?: any } {
-    const windowInfo = this.windowInfoMap.get(windowId)
-    if (!windowInfo) return { type: 'undefined' }
-
-    const member = this.getMember(windowInfo.window, path)
-
-    if (member === undefined || member === null) {
-      return { type: 'value', value: member }
-    }
-
-    if (typeof member === 'function') {
-      return { type: 'function' }
-    }
-
-    if (typeof member === 'object') {
-      // 检查是否是 Promise
-      if (member instanceof Promise) {
-        return { type: 'promise' }
-      }
-      // 简单的对象或数组可以直接返回
-      if (member.constructor === Object || Array.isArray(member)) {
-        // 这里需要小心循环引用，Electron IPC 会处理，但为了安全起见，
-        // 如果是 Electron 对象（如 WebContents），我们应该标记为 object
-        // 简单的判断方法：看是否是纯对象
-        return { type: 'object' } // 统统视为 object，由 Proxy 继续代理
-      }
-      // 其他复杂对象 (BrowserWindow, WebContents 等)
-      return { type: 'object' }
-    }
-
-    // 基本类型
-    return { type: 'value', value: member }
+    console.warn('[pluginWindow:method] 父窗口不存在或已销毁')
   }
 
   /**
    * 根据 webContentsId 获取插件路径
    */
   public getPluginPathByWebContentsId(webContentsId: number): string | null {
-    for (const windowInfo of Array.from(this.windowInfoMap.values())) {
+    for (const windowInfo of this.windowInfoMap.values()) {
       if (!windowInfo.window.isDestroyed() && windowInfo.window.webContents.id === webContentsId) {
         return windowInfo.pluginPath
       }
@@ -296,7 +333,7 @@ class PluginWindowManager {
    * 根据 webContentsId 获取插件名称
    */
   public getPluginNameByWebContentsId(webContentsId: number): string | null {
-    for (const windowInfo of Array.from(this.windowInfoMap.values())) {
+    for (const windowInfo of this.windowInfoMap.values()) {
       if (!windowInfo.window.isDestroyed() && windowInfo.window.webContents.id === webContentsId) {
         return windowInfo.pluginName
       }
@@ -308,32 +345,32 @@ class PluginWindowManager {
    * 关闭指定插件的所有窗口
    */
   public closeByPlugin(pluginPath: string): void {
-    const windowIdsToClose: string[] = []
+    const windowIdsToClose: number[] = []
 
-    // 查找属于该插件的所有窗口
-    for (const [windowId, windowInfo] of Array.from(this.windowInfoMap.entries())) {
+    for (const [winId, windowInfo] of this.windowInfoMap.entries()) {
       if (windowInfo.pluginPath === pluginPath) {
-        windowIdsToClose.push(windowId)
+        windowIdsToClose.push(winId)
       }
     }
 
-    // 关闭这些窗口
-    for (const windowId of windowIdsToClose) {
-      const windowInfo = this.windowInfoMap.get(windowId)
+    for (const winId of windowIdsToClose) {
+      const windowInfo = this.windowInfoMap.get(winId)
       if (windowInfo && !windowInfo.window.isDestroyed()) {
         windowInfo.window.destroy()
       }
-      this.windowInfoMap.delete(windowId)
+      this.windowInfoMap.delete(winId)
     }
 
-    console.log(`[PluginWindow] 已关闭插件 ${pluginPath} 的 ${windowIdsToClose.length} 个窗口`)
+    console.log(
+      `[pluginWindow:destroy] 已关闭插件 ${pluginPath} 的 ${windowIdsToClose.length} 个窗口`
+    )
   }
 
   /**
    * 检查指定插件是否有打开的窗口
    */
   public hasWindowsByPlugin(pluginPath: string): boolean {
-    for (const windowInfo of Array.from(this.windowInfoMap.values())) {
+    for (const windowInfo of this.windowInfoMap.values()) {
       if (windowInfo.pluginPath === pluginPath && !windowInfo.window.isDestroyed()) {
         return true
       }
@@ -345,7 +382,7 @@ class PluginWindowManager {
    * 检查 WebContents 是否属于 browser 窗口
    */
   public isBrowserWindow(webContents: Electron.WebContents): boolean {
-    for (const windowInfo of Array.from(this.windowInfoMap.values())) {
+    for (const windowInfo of this.windowInfoMap.values()) {
       if (!windowInfo.window.isDestroyed() && windowInfo.window.webContents.id === webContents.id) {
         return true
       }
@@ -357,7 +394,7 @@ class PluginWindowManager {
    * 关闭所有窗口
    */
   public closeAll(): void {
-    for (const windowInfo of Array.from(this.windowInfoMap.values())) {
+    for (const windowInfo of this.windowInfoMap.values()) {
       if (!windowInfo.window.isDestroyed()) {
         windowInfo.window.close()
       }
@@ -366,10 +403,10 @@ class PluginWindowManager {
   }
 
   /**
-   * 广播消息到所有插件窗口（用于 browser 窗口）
+   * 广播消息到所有插件窗口
    */
   public broadcastToAll(channel: string, ...args: any[]): void {
-    for (const windowInfo of Array.from(this.windowInfoMap.values())) {
+    for (const windowInfo of this.windowInfoMap.values()) {
       if (!windowInfo.window.isDestroyed()) {
         windowInfo.window.webContents.send(channel, ...args)
       }

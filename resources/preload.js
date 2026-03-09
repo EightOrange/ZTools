@@ -1,5 +1,36 @@
 const electron = require('electron')
 
+// ── plugin.api 统一 IPC 公共方法（与 utools 写法一致）──
+
+/**
+ * 同步 IPC 调用 - 通过 plugin.api 通道发送同步消息
+ * 如果主进程返回 Error 实例，自动抛出异常
+ */
+const ipcSendSync = (apiName, args) => {
+  const result = electron.ipcRenderer.sendSync('plugin.api', apiName, args)
+  if (result instanceof Error) throw result
+  return result
+}
+
+/**
+ * 异步 IPC 调用 - 通过 plugin.api 通道发送异步消息
+ * 主进程 throw 的错误会被 Electron 包裹，这里去除前缀后重新抛出
+ */
+const ipcInvoke = async (apiName, args) => {
+  try {
+    return await electron.ipcRenderer.invoke('plugin.api', apiName, args)
+  } catch (e) {
+    throw new Error(e.message.replace(/^.*?Error:/, '').trim())
+  }
+}
+
+/**
+ * 单向 IPC 发送 - 通过 plugin.api 通道发送消息，不等待返回值
+ */
+const ipcSend = (apiName, args) => {
+  electron.ipcRenderer.send('plugin.api', apiName, args)
+}
+
 // 为已弃用的 ipcRenderer.sendTo 添加 polyfill
 // 通过主进程转发消息到目标 webContents
 if (!electron.ipcRenderer.sendTo) {
@@ -7,6 +38,20 @@ if (!electron.ipcRenderer.sendTo) {
     electron.ipcRenderer.send('ipc-send-to', webContentsId, channel, ...args)
   }
 }
+
+// senderId 兼容层：接收主进程中继消息并分发到原始通道
+electron.ipcRenderer.on('__ipc_sendto_relay__', (_event, payload) => {
+  // 仅处理约定结构，避免异常 payload 影响插件运行
+  if (!payload || typeof payload !== 'object') return
+  const { senderId, channel, args } = payload
+  if (typeof senderId !== 'number') return
+  if (typeof channel !== 'string' || !channel) return
+  if (channel === '__ipc_sendto_relay__') return // 防止内部通道递归分发
+  if (!Array.isArray(args)) return
+
+  // 兼容边界：只补 senderId，不模拟完整 IpcRendererEvent
+  electron.ipcRenderer.emit(channel, { senderId }, ...args)
+})
 
 // 事件监听采用单回调模式：重复注册会替换之前的回调，避免插件热重载时累积多个监听器
 let enterCallback = null
@@ -283,86 +328,58 @@ window.ztools = {
   hideMainWindow: async (isRestorePreWindow = true) => {
     return await electron.ipcRenderer.invoke('hide-main-window', isRestorePreWindow)
   },
-  // 创建独立窗口
+  // 创建独立窗口（白名单动态挂载模式，与 utools 一致）
   createBrowserWindow: (url, options, callback) => {
-    const callbackId = Math.random().toString(36).substr(2, 9)
-
-    // 监听加载完成事件
-    if (callback && typeof callback === 'function') {
-      electron.ipcRenderer.once(`browser-window-loaded-${callbackId}`, () => {
-        callback()
-      })
+    // 注册 callback（子窗口 dom-ready 时由主进程在父窗口触发）
+    if (typeof callback === 'function') {
+      window.ztools.__event__ = window.ztools.__event__ || {}
+      window.ztools.__event__.createBrowserWindowCallback = callback
     }
 
-    // 同步调用创建窗口，获取 windowId
-    const windowId = electron.ipcRenderer.sendSync(
-      'create-browser-window',
-      url,
-      options,
-      callbackId
-    )
+    // 同步创建窗口，返回 { id, methods[], invokes[], webContents: { id, methods[], invokes[] } }
+    const result = ipcSendSync('createBrowserWindow', { url, options })
 
-    if (!windowId) return null
+    const winId = result.id
 
-    // 创建 Proxy 对象模拟 BrowserWindow
-    const createProxy = (path = []) => {
-      return new Proxy(() => {}, {
-        get: (target, prop) => {
-          if (typeof prop !== 'string') return undefined
+    // ── 挂载 BrowserWindow 同步方法 ──
+    result.methods.forEach((method) => {
+      result[method] = (...args) =>
+        ipcSendSync('pluginBrowserWindowMethod', { id: winId, method, args })
+    })
+    delete result.methods
 
-          // 特殊处理 then，防止 Promise 链式调用错误
-          if (prop === 'then') {
-            if (path.length === 0) return undefined
-            // 如果用户强行 await 一个属性，我们返回该属性的值
-            return (resolve) =>
-              resolve(
-                electron.ipcRenderer.sendSync('browser-window-get-prop-sync', windowId, path).value
-              )
-          }
+    // ── 挂载 BrowserWindow 异步方法 ──
+    result.invokes.forEach((method) => {
+      result[method] = (...args) =>
+        ipcInvoke('pluginBrowserWindowInvoke', { id: winId, method, args })
+    })
+    delete result.invokes
 
-          const newPath = [...path, prop]
+    // ── 挂载 WebContents 同步方法 ──
+    result.webContents.methods.forEach((method) => {
+      result.webContents[method] = (...args) =>
+        ipcSendSync('pluginBrowserWindowMethod', {
+          id: winId,
+          target: 'webContents',
+          method,
+          args
+        })
+    })
+    delete result.webContents.methods
 
-          // 同步获取属性信息
-          const info = electron.ipcRenderer.sendSync(
-            'browser-window-get-prop-sync',
-            windowId,
-            newPath
-          )
+    // ── 挂载 WebContents 异步方法 ──
+    result.webContents.invokes.forEach((method) => {
+      result.webContents[method] = (...args) =>
+        ipcInvoke('pluginBrowserWindowInvoke', {
+          id: winId,
+          target: 'webContents',
+          method,
+          args
+        })
+    })
+    delete result.webContents.invokes
 
-          console.log('获取属性信息:', info)
-
-          if (info.type === 'value') {
-            return info.value
-          } else if (info.type === 'undefined') {
-            throw new Error('window no exist')
-          } else {
-            // 如果是对象，继续 Proxy
-            return createProxy(newPath)
-          }
-        },
-        apply: (target, thisArg, args) => {
-          // 同步尝试调用方法
-          const result = electron.ipcRenderer.sendSync(
-            'browser-window-call-sync',
-            windowId,
-            path,
-            args
-          )
-
-          if (result.type === 'value') {
-            // 同步方法，直接返回结果
-            return result.data
-          } else if (result.type === 'promise') {
-            // 异步方法，返回 Promise 等待结果
-            return electron.ipcRenderer.invoke('browser-window-wait-task', result.taskId)
-          }
-
-          return null
-        }
-      })
-    }
-
-    return createProxy()
+    return result
   },
   // 退出插件
   outPlugin: async (isKill = false) => {

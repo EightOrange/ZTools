@@ -30,6 +30,7 @@ import pluginHttpAPI from './plugin/http'
 import pluginInputAPI from './plugin/input'
 import internalPluginAPI from './plugin/internal'
 import pluginLifecycleAPI from './plugin/lifecycle'
+import { initPluginApiDispatcher } from './plugin/pluginApiDispatcher'
 import pluginRedirectAPI from './plugin/redirect'
 import pluginScreenAPI from './plugin/screen'
 import pluginShellAPI from './plugin/shell'
@@ -71,6 +72,9 @@ class APIManager {
     syncAPI.init()
     localShortcutsAPI.init(mainWindow)
     webSearchAPI.init()
+
+    // 初始化插件 API 统一分发器（必须在插件 API 初始化之前）
+    initPluginApiDispatcher()
 
     // 初始化插件API
     pluginAiAPI.init(mainWindow, pluginManager)
