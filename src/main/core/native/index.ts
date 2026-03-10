@@ -509,10 +509,6 @@ export class ColorPicker {
    * - 取消: { success: false, hex: null }
    */
   static start(callback: (result: { success: boolean; hex: string | null }) => void): void {
-    if (platform !== 'darwin') {
-      throw new Error('ColorPicker is only supported on macOS')
-    }
-
     if (ColorPicker._isActive) {
       throw new Error('Color picker is already active')
     }
