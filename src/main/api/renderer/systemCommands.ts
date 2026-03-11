@@ -58,6 +58,16 @@ export async function executeSystemCommand(
       }
       break
 
+    // 锁定屏幕：macOS 使用 AppleScript 模拟 Ctrl+Cmd+Q，Windows 调用 user32.dll LockWorkStation
+    case 'lock-screen':
+      if (platform === 'darwin') {
+        cmd =
+          'osascript -e "tell application \\"System Events\\" to keystroke \\"q\\" using {control down, command down}"'
+      } else if (platform === 'win32') {
+        cmd = 'rundll32.exe user32.dll,LockWorkStation'
+      }
+      break
+
     case 'search':
     case 'bing-search':
       // 旧的硬编码搜索已迁移到网页快开，保留向后兼容

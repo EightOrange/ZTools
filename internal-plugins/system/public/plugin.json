@@ -38,6 +38,12 @@
       "cmds": ["Sleep", "睡眠"]
     },
     {
+      "code": "lock-screen",
+      "explain": "锁屏",
+      "icon": "lock.png",
+      "cmds": ["Lock Screen", "锁屏", "锁定屏幕"]
+    },
+    {
       "code": "open-url",
       "explain": "打开网址",
       "icon": "openurl.png",
