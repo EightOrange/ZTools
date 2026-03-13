@@ -45,6 +45,8 @@ interface WindowActivationInfo {
   width?: number
   height?: number
   appPath?: string
+  className?: string // Windows 窗口类名（CabinetWClass/Progman/WorkerW 等）
+  hwnd?: number // Windows 窗口句柄（用于 COM 查询 Explorer 路径）
 }
 
 // 配置
@@ -120,6 +122,8 @@ class ClipboardManager {
     width?: number
     height?: number
     appPath?: string
+    className?: string
+    hwnd?: number
   }): void {
     // 直接使用原生数据，保留所有字段
     this.currentWindow = {
@@ -131,7 +135,9 @@ class ClipboardManager {
       y: data.y,
       width: data.width,
       height: data.height,
-      appPath: data.appPath
+      appPath: data.appPath,
+      className: data.className,
+      hwnd: data.hwnd
     }
 
     // console.log(`窗口激活变化: ${data.app} (${data.bundleId || data.pid})`)

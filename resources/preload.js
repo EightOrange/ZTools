@@ -518,6 +518,8 @@ window.ztools = {
   shellBeep: () => electron.ipcRenderer.sendSync('shell-beep'),
   // 将文件移动到回收站
   shellTrashItem: (fullPath) => electron.ipcRenderer.invoke('shell-trash-item', fullPath),
+  // 读取当前文件管理器窗口的文件夹路径（macOS: Finder / Windows: Explorer）
+  readCurrentFolderPath: () => electron.ipcRenderer.invoke('plugin:read-current-folder-path'),
   // 获取文件系统图标（返回 base64 Data URL）
   getFileIcon: (filePath) => electron.ipcRenderer.sendSync('get-file-icon', filePath),
   // 插件跳转
