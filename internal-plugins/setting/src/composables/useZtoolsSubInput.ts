@@ -41,12 +41,21 @@ export interface UseSubInputResult {
  * @param initialValue 子输入框初始值
  * @param placeholder 占位符
  * @param isFocus 是否聚焦，默认true
+ * @param bindFindShortcut 是否绑定搜索快捷键，默认true
+ * 绑定后可通过 macOS 的 Command + F 或 Windows 的 Ctrl + F
+ * 重新聚焦并选中当前子输入框内容
  */
 export function useZtoolsSubInput(
   initialValue: string = '',
   placeholder?: string,
-  isFocus?: boolean
+  isFocus?: boolean,
+  bindFindShortcut: boolean = true
 ): UseSubInputResult {
+  const ztoolsWithSubInput = ztools as typeof ztools & {
+    subInputFocus?: () => boolean
+    subInputSelect?: () => boolean
+  }
+
   // 是否在注册中
   let registering = false
 
@@ -64,11 +73,38 @@ export function useZtoolsSubInput(
 
   // 键盘按下的事件监听
   function handleKeyDown(e: KeyboardEvent): void {
+    const isFindShortcut =
+      e.key.toLowerCase() === 'f' && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey
+
+    if (bindFindShortcut && isFindShortcut) {
+      e.preventDefault()
+      e.stopPropagation()
+      focusSubInput(true)
+      return
+    }
+
     if (e.key === 'Enter' && subInput.value) {
       void onSearchHook.trigger(subInput.value)
       e.preventDefault()
       e.stopPropagation()
     }
+  }
+
+  // 重新注册并聚焦子输入框，必要时选中现有内容
+  function focusSubInput(select = false): void {
+    register(true)
+
+    let retryCount = 0
+    const timer = window.setInterval(() => {
+      const handled = select
+        ? ztoolsWithSubInput.subInputSelect?.()
+        : ztoolsWithSubInput.subInputFocus?.()
+
+      retryCount++
+      if (handled || retryCount >= 10) {
+        window.clearInterval(timer)
+      }
+    }, 50)
   }
 
   function register(autoFocus = isFocus): void {
