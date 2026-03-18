@@ -6,6 +6,25 @@ import { getFileIconAsBase64 } from '../../core/iconProtocol'
 import { WindowManager } from '../../core/native/index.js'
 import type ClipboardManager from '../../managers/clipboardManager'
 
+const MAC_BROWSER_APP_MAP = {
+  'com.apple.Safari': 'Safari',
+  'com.google.Chrome': 'Google Chrome',
+  'com.microsoft.edgemac': 'Microsoft Edge',
+  'com.operasoftware.Opera': 'Opera',
+  'com.vivaldi.Vivaldi': 'Vivaldi',
+  'com.brave.Browser': 'Brave Browser'
+} as const
+
+const WINDOWS_BROWSER_PROCESS_MAP = {
+  'chrome.exe': 'chrome',
+  'firefox.exe': 'firefox',
+  'MicrosoftEdge.exe': 'microsoftedge',
+  'iexplore.exe': 'iexplore',
+  'opera.exe': 'opera',
+  'brave.exe': 'brave',
+  'msedge.exe': 'msedge'
+} as const
+
 /**
  * Shell API - 插件专用
  * 提供系统 shell 相关操作，包括文件管理器路径读取
@@ -102,6 +121,13 @@ export class PluginShellAPI {
     ipcMain.handle('plugin:read-current-folder-path', async () => {
       return this.readCurrentFolderPath()
     })
+
+    // 读取当前浏览器窗口 URL（异步）
+    // macOS: 通过 AppleScript 查询前台标签页 URL
+    // Windows: 通过原生自动化能力读取地址栏 URL
+    ipcMain.handle('plugin:read-current-browser-url', async () => {
+      return this.readCurrentBrowserUrl()
+    })
   }
 
   /**
@@ -119,6 +145,24 @@ export class PluginShellAPI {
       return this.readCurrentFolderPathMac()
     } else if (currentPlatform === 'win32') {
       return this.readCurrentFolderPathWindows()
+    } else {
+      throw new Error('该平台不支持')
+    }
+  }
+
+  /**
+   * 读取当前浏览器窗口的 URL
+   * - macOS: AppleScript 读取当前前台标签页 URL
+   * - Windows: 原生层读取当前浏览器地址栏 URL
+   * - Linux: 不支持
+   */
+  private async readCurrentBrowserUrl(): Promise<string> {
+    const currentPlatform = os.platform()
+
+    if (currentPlatform === 'darwin') {
+      return this.readCurrentBrowserUrlMac()
+    } else if (currentPlatform === 'win32') {
+      return this.readCurrentBrowserUrlWindows()
     } else {
       throw new Error('该平台不支持')
     }
@@ -171,6 +215,54 @@ export class PluginShellAPI {
       const cleanMsg = errMsg.replace(/^\d+:\d+:\s*execution error:\s*/i, '').trim()
       console.error('[PluginShell] readCurrentFolderPath: AppleScript 执行失败:', cleanMsg)
       throw new Error(cleanMsg)
+    }
+  }
+
+  /**
+   * macOS: 通过 AppleScript 获取当前浏览器前台标签页 URL
+   * 参考 uTools 行为：
+   * - Safari 读取 front document
+   * - 其他受支持浏览器读取 front window 的 active tab
+   */
+  private async readCurrentBrowserUrlMac(): Promise<string> {
+    const windowInfo = this.clipboardManager?.getCurrentWindow()
+    if (!windowInfo) {
+      console.warn('[PluginShell] readCurrentBrowserUrl: 未识别到当前活动窗口')
+      throw new Error('未识别到当前活动窗口')
+    }
+
+    const bundleId = windowInfo.bundleId
+    if (!bundleId || !(bundleId in MAC_BROWSER_APP_MAP)) {
+      console.log(
+        `[PluginShell] readCurrentBrowserUrl: 当前窗口非受支持浏览器 (bundleId=${bundleId})`
+      )
+      throw new Error('当前活动窗口非可识别浏览器')
+    }
+
+    const appName = MAC_BROWSER_APP_MAP[bundleId as keyof typeof MAC_BROWSER_APP_MAP]
+    const script =
+      bundleId === 'com.apple.Safari'
+        ? 'tell application "Safari" to return URL of front document'
+        : `tell application "${appName}" to return URL of active tab of front window`
+
+    try {
+      const result = (await this.execAppleScript(script)).trim()
+      if (!result) {
+        console.error('[PluginShell] readCurrentBrowserUrl: AppleScript 返回空 URL')
+        throw new Error('未读取到 URL')
+      }
+      console.log(
+        `[PluginShell] readCurrentBrowserUrl: macOS 浏览器 URL 读取成功 (bundleId=${bundleId})`
+      )
+      return result
+    } catch (error: unknown) {
+      const errMsg = error instanceof Error ? error.message : String(error)
+      const cleanMsg = errMsg
+        .replace(/^\d+:\d+:\s*execution error:\s*/i, '')
+        .replace(/\(-?\d+\)\s*$/i, '')
+        .trim()
+      console.error('[PluginShell] readCurrentBrowserUrl: AppleScript 执行失败:', cleanMsg)
+      throw new Error(cleanMsg || '未读取到 URL')
     }
   }
 
@@ -239,6 +331,59 @@ export class PluginShellAPI {
       `[PluginShell] readCurrentFolderPath: 未识别的窗口类 "${className}" (app=${windowInfo.app})`
     )
     throw new Error(`当前活动窗口类 "${className}" 未识别`)
+  }
+
+  /**
+   * Windows: 读取当前浏览器窗口 URL
+   * 参考 uTools 行为：
+   * - 按进程名识别浏览器
+   * - 原生层按 hwnd 读取 URL
+   * - Chrome 首次失败时 50ms 后重试一次
+   */
+  private async readCurrentBrowserUrlWindows(): Promise<string> {
+    const windowInfo = this.clipboardManager?.getCurrentWindow()
+    if (!windowInfo) {
+      console.warn('[PluginShell] readCurrentBrowserUrl: 未识别到当前活动窗口')
+      throw new Error('未识别到当前活动窗口')
+    }
+
+    const browserName =
+      WINDOWS_BROWSER_PROCESS_MAP[windowInfo.app as keyof typeof WINDOWS_BROWSER_PROCESS_MAP]
+    if (!browserName) {
+      console.log(
+        `[PluginShell] readCurrentBrowserUrl: 当前窗口非受支持浏览器 (app=${windowInfo.app})`
+      )
+      throw new Error('当前活动窗口非可识别浏览器')
+    }
+
+    if (windowInfo.hwnd == null) {
+      console.error('[PluginShell] readCurrentBrowserUrl: 浏览器窗口缺少 hwnd')
+      throw new Error('未读取到 URL')
+    }
+
+    const tryReadUrl = async (): Promise<string | null> => {
+      const result = await WindowManager.readBrowserWindowUrl(browserName, windowInfo.hwnd!)
+      return typeof result === 'string' && result.trim() !== '' ? result.trim() : null
+    }
+
+    let url = await tryReadUrl()
+    if (!url && browserName === 'chrome') {
+      console.log('[PluginShell] readCurrentBrowserUrl: Chrome 首次读取失败，50ms 后重试')
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      url = await tryReadUrl()
+    }
+
+    if (!url) {
+      console.error(
+        `[PluginShell] readCurrentBrowserUrl: 原生读取失败 (browser=${browserName}, hwnd=${windowInfo.hwnd})`
+      )
+      throw new Error('未读取到 URL')
+    }
+
+    console.log(
+      `[PluginShell] readCurrentBrowserUrl: Windows 浏览器 URL 读取成功 (browser=${browserName}, hwnd=${windowInfo.hwnd})`
+    )
+    return url
   }
 
   /**

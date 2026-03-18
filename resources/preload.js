@@ -520,6 +520,8 @@ window.ztools = {
   shellTrashItem: (fullPath) => electron.ipcRenderer.invoke('shell-trash-item', fullPath),
   // 读取当前文件管理器窗口的文件夹路径（macOS: Finder / Windows: Explorer）
   readCurrentFolderPath: () => electron.ipcRenderer.invoke('plugin:read-current-folder-path'),
+  // 读取当前浏览器窗口 URL（前提当前活动系统窗口是受支持浏览器）
+  readCurrentBrowserUrl: () => electron.ipcRenderer.invoke('plugin:read-current-browser-url'),
   // 获取文件系统图标（返回 base64 Data URL）
   getFileIcon: (filePath) => electron.ipcRenderer.sendSync('get-file-icon', filePath),
   // 插件跳转

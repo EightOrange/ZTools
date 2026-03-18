@@ -49,6 +49,12 @@ interface NativeAddon {
   unicodeType: (segment: string) => boolean
   /** Windows: 通过 COM IShellWindows 查询指定窗口句柄对应的 Explorer 文件夹路径 */
   getExplorerFolderPath: (hwnd: number) => string | null
+  /** Windows: 读取指定浏览器窗口的当前 URL，结果通过 callback 返回 */
+  readBrowserWindowUrl: (
+    browserName: string,
+    hwnd: number,
+    callback: (url: string | null) => void
+  ) => void
 }
 
 interface WindowInfo {
@@ -329,6 +335,30 @@ export class WindowManager {
       throw new Error('getExplorerFolderPath is only available on Windows')
     }
     return (addon as NativeAddon).getExplorerFolderPath(hwnd)
+  }
+
+  /**
+   * Windows: 读取指定浏览器窗口的当前 URL
+   * @param browserName 浏览器标识（如 chrome/msedge/firefox）
+   * @param hwnd 窗口句柄（从 WindowInfo.hwnd 获取）
+   * @returns URL 字符串，失败返回 null
+   */
+  static readBrowserWindowUrl(browserName: string, hwnd: number): Promise<string | null> {
+    if (platform !== 'win32') {
+      throw new Error('readBrowserWindowUrl is only available on Windows')
+    }
+    if (typeof browserName !== 'string' || browserName.trim() === '') {
+      throw new TypeError('browserName must be a non-empty string')
+    }
+    if (typeof hwnd !== 'number' || !Number.isFinite(hwnd) || hwnd <= 0) {
+      throw new TypeError('hwnd must be a positive number')
+    }
+
+    return new Promise((resolve) => {
+      ;(addon as NativeAddon).readBrowserWindowUrl(browserName, hwnd, (url) => {
+        resolve(typeof url === 'string' && url.trim() !== '' ? url : null)
+      })
+    })
   }
 
   /**
