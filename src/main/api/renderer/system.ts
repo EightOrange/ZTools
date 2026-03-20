@@ -91,13 +91,13 @@ export class SystemAPI {
     }
   }
 
-  private getLastCopiedContent(timeLimit?: number): {
+  private async getLastCopiedContent(timeLimit?: number): Promise<{
     type: 'text' | 'image' | 'file'
     data: string | Array<{ path: string; name: string; isDirectory: boolean }>
     timestamp: number
-  } | null {
+  } | null> {
     try {
-      return clipboardManager.getLastCopiedContent(timeLimit)
+      return await clipboardManager.getLastCopiedContent(timeLimit)
     } catch (error) {
       console.error('[System] 获取最后复制内容失败:', error)
       return null

@@ -12,10 +12,17 @@ import {
   readClipboardFiles,
   writeClipboardFiles
 } from '../utils/clipboardFiles'
+import { sleep } from '../utils/common'
 import pluginManager from './pluginManager'
 import ClipboardMonitor, { WindowMonitor, WindowManager } from '../core/native'
 // 剪贴板类型
 type ClipboardType = 'text' | 'image' | 'file'
+
+type LastCopiedContent = {
+  type: 'text' | 'image' | 'file'
+  data: string | FileItem[]
+  timestamp: number
+}
 
 // 文件项
 interface FileItem {
@@ -68,6 +75,11 @@ const DEFAULT_CONFIG: ClipboardConfig = {
   maxTotalImageSize: 500 * 1024 * 1024 // 500MB
 }
 
+// 剪贴板准备等待时间（复制后有些应用需要一点时间才能真正写入剪贴板）
+const CLIPBOARD_READY_WAIT_MS = 180
+// 轮询间隔（短间隔重试，尽快拿到监听更新后的缓存）
+const CLIPBOARD_RETRY_INTERVAL_MS = 30
+
 class ClipboardManager {
   private isRunning = false
   private config: ClipboardConfig = DEFAULT_CONFIG
@@ -78,11 +90,7 @@ class ClipboardManager {
   private windowMonitor: WindowMonitor
 
   // 记录最后一次复制的内容（统一管理）
-  private lastCopiedContent: {
-    type: 'text' | 'image' | 'file'
-    data: string | FileItem[] // text/image: string, file: FileItem[]
-    timestamp: number
-  } | null = null
+  private lastCopiedContent: LastCopiedContent | null = null
 
   // 临时取消剪贴板监听的计时器（防止 paste API 写入剪贴板时自我触发）
   private cancelWatchTimeout: ReturnType<typeof setTimeout> | null = null
@@ -747,37 +755,67 @@ class ClipboardManager {
   }
 
   // 获取最后一次复制的文本（在指定时间内）- 兼容旧 API
-  public getLastCopiedText(timeLimit: number): string | null {
-    const content = this.getLastCopiedContent(timeLimit)
+  public async getLastCopiedText(timeLimit: number): Promise<string | null> {
+    const content = await this.getLastCopiedContent(timeLimit)
     return content?.type === 'text' ? (content.data as string) : null
   }
 
   // 获取最后复制的图片（自动粘贴功能）- 兼容旧 API
-  public getLastCopiedImage(timeLimit: number): string | null {
-    const content = this.getLastCopiedContent(timeLimit)
+  public async getLastCopiedImage(timeLimit: number): Promise<string | null> {
+    const content = await this.getLastCopiedContent(timeLimit)
     return content?.type === 'image' ? (content.data as string) : null
   }
 
   // 获取最后复制的内容（统一接口）
-  public getLastCopiedContent(
+  public async getLastCopiedContent(
     timeLimit?: number // 可选：时间限制（毫秒），不传或传 0 表示无时间限制
-  ): { type: 'text' | 'image' | 'file'; data: string | FileItem[]; timestamp: number } | null {
-    if (!this.lastCopiedContent) {
-      return null
+  ): Promise<LastCopiedContent | null> {
+    const cachedContent = this.getValidLastCopiedContent(timeLimit)
+    if (cachedContent) {
+      return cachedContent
     }
 
-    // 如果指定了时间限制，检查是否超时
-    if (timeLimit && timeLimit > 0) {
-      const now = Date.now()
-      const elapsed = now - this.lastCopiedContent.timestamp
+    const initialTimestamp = this.lastCopiedContent?.timestamp ?? 0
+    const waitMs =
+      timeLimit && timeLimit > 0
+        ? Math.min(timeLimit, CLIPBOARD_READY_WAIT_MS)
+        : CLIPBOARD_READY_WAIT_MS
+    const deadline = Date.now() + waitMs
 
-      // 如果超过时间限制，返回 null
-      if (elapsed > timeLimit) {
-        return null
+    while (Date.now() < deadline) {
+      await sleep(CLIPBOARD_RETRY_INTERVAL_MS)
+
+      const latestContent = this.getValidLastCopiedContent(timeLimit)
+      if (latestContent && latestContent.timestamp !== initialTimestamp) {
+        return latestContent
       }
     }
 
+    return null
+  }
+
+  // 获取在有效时间范围内的最后复制内容
+  private getValidLastCopiedContent(timeLimit?: number): LastCopiedContent | null {
+    if (!this.isContentWithinTimeLimit(this.lastCopiedContent, timeLimit)) {
+      return null
+    }
     return this.lastCopiedContent
+  }
+
+  // 检查复制内容是否仍在允许的时间范围内
+  private isContentWithinTimeLimit(
+    content: LastCopiedContent | null,
+    timeLimit?: number
+  ): content is LastCopiedContent {
+    if (!content) {
+      return false
+    }
+
+    if (!timeLimit || timeLimit <= 0) {
+      return true
+    }
+
+    return Date.now() - content.timestamp <= timeLimit
   }
 
   // 获取状态
