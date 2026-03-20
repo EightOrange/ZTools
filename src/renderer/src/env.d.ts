@@ -370,6 +370,9 @@ declare global {
         title?: string
       }) => Promise<void>
       onSuperPanelWindowCommandsData: (callback: (data: { results: any[] }) => void) => void
+      onSuperPanelTranslation: (
+        callback: (data: { text: string; sourceText?: string }) => void
+      ) => void
       onSuperPanelSearchWindowCommands: (
         callback: (windowInfo: { app?: string; title?: string }) => void
       ) => void

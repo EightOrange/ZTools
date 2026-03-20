@@ -399,6 +399,7 @@ const iconErrors = ref<Set<string>>(new Set())
 const currentClipboardContent = ref<ClipboardContent | null>(null)
 // 翻译结果
 const translationText = ref('')
+const pendingTranslation = ref<{ text: string; sourceText?: string } | null>(null)
 // 头像（默认使用内置头像）
 const avatar = ref(defaultAvatar)
 const acrylicLightOpacity = ref(78)
@@ -426,6 +427,21 @@ const isDragging = ref(false)
 const dragItemKey = ref('') // 被拖拽项的 key（身份标识）
 const dragSnapshot = ref<GridItem[]>([])
 const dragItemIsFolder = ref(false) // 被拖拽项是否是文件夹
+
+// 同步翻译
+function syncTranslationForClipboardContent(content: ClipboardContent | null): void {
+  if (content?.type !== 'text' || !content.text) {
+    translationText.value = ''
+    return
+  }
+
+  if (pendingTranslation.value?.sourceText === content.text) {
+    translationText.value = pendingTranslation.value.text
+    return
+  }
+
+  translationText.value = ''
+}
 
 function getThemeColor(colorName: string, isDark: boolean): string {
   const colors: Record<string, { light: string; dark: string }> = {
@@ -931,7 +947,7 @@ onMounted(() => {
       ensureFolderIds(pinnedCommands.value)
       selectedIndex.value = 0
       currentClipboardContent.value = null
-      translationText.value = ''
+      syncTranslationForClipboardContent(null)
       scrollToTop()
     } else if (data.type === 'search') {
       mode.value = 'search'
@@ -939,13 +955,10 @@ onMounted(() => {
       selectedIndex.value = 0
       // 保存搜索结果携带的剪贴板内容
       currentClipboardContent.value = data.clipboardContent || null
-      translationText.value = ''
+      syncTranslationForClipboardContent(currentClipboardContent.value)
       scrollToTop()
     }
   })
-
-  // 通知主进程窗口已准备好
-  window.ztools.superPanelReady()
 
   // 监听窗口匹配搜索结果
   window.ztools.onSuperPanelWindowCommandsData((data: { results: any[] }) => {
@@ -1034,9 +1047,17 @@ onMounted(() => {
   })
 
   // 监听翻译结果
-  window.ztools.onSuperPanelTranslation((data: { text: string }) => {
+  window.ztools.onSuperPanelTranslation((data: { text: string; sourceText?: string }) => {
     if (data.text) {
-      translationText.value = data.text
+      pendingTranslation.value = data
+
+      if (
+        currentClipboardContent.value?.type === 'text' &&
+        currentClipboardContent.value.text &&
+        data.sourceText === currentClipboardContent.value.text
+      ) {
+        translationText.value = data.text
+      }
     }
   })
 
@@ -1118,6 +1139,9 @@ onMounted(() => {
     panel.setAttribute('tabindex', '0')
     panel.focus()
   }
+
+  // 通知主进程窗口已准备好
+  window.ztools.superPanelReady()
 })
 
 // 键盘焦点保持

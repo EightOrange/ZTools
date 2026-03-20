@@ -511,7 +511,10 @@ class SuperPanelManager {
     try {
       const translation = await translationManager.translate(text)
       if (translation) {
-        this.sendToSuperPanel('super-panel-translation', { text: translation })
+        this.sendToSuperPanel('super-panel-translation', {
+          text: translation,
+          sourceText: text
+        })
       }
     } catch (error) {
       console.error('[SuperPanel] 翻译请求失败:', error)
