@@ -2,6 +2,8 @@ import { ipcMain } from 'electron'
 import type { PluginManager } from '../../managers/pluginManager'
 import lmdbInstance from '../../core/lmdb/lmdbInstance'
 import windowManager from '../../managers/windowManager'
+import { type PluginSource } from '../../../shared/pluginVariantRef'
+import { getPluginDataPrefix } from '../../../shared/pluginRuntimeNamespace'
 
 interface DynamicFeature {
   code: string
@@ -30,17 +32,45 @@ export class PluginFeatureAPI {
     this.setupIPC()
   }
 
+  /**
+   * 根据插件名称和来源生成动态 feature 存储键。
+   * 动态指令也必须按运行时命名空间隔离，避免开发版和安装版串写。
+   */
+  private getDynamicFeaturesDocId(pluginName: string, pluginSource: PluginSource): string {
+    return `${getPluginDataPrefix(pluginName, pluginSource)}dynamic-features`
+  }
+
+  /**
+   * 从 IPC 事件中解析当前插件的运行时上下文。
+   */
+  private getPluginRuntimeContext(
+    event: Electron.IpcMainEvent
+  ): { pluginName: string; pluginSource: PluginSource } | null {
+    const pluginInfo = this.pluginManager?.getPluginInfoByWebContents(event.sender)
+    if (!pluginInfo) {
+      return null
+    }
+
+    return {
+      pluginName: pluginInfo.name,
+      pluginSource: pluginInfo.pluginSource
+    }
+  }
+
   private setupIPC(): void {
     // 获取动态 features
     ipcMain.on('get-features', (event, codes?: string[]) => {
       try {
-        const pluginName = this.getPluginName(event)
-        if (!pluginName) {
+        const pluginRuntimeContext = this.getPluginRuntimeContext(event)
+        if (!pluginRuntimeContext) {
           event.returnValue = []
           return
         }
 
-        const features = this.loadDynamicFeatures(pluginName)
+        const features = this.loadDynamicFeatures(
+          pluginRuntimeContext.pluginName,
+          pluginRuntimeContext.pluginSource
+        )
 
         // 如果指定了 codes，只返回匹配的 features
         if (codes && Array.isArray(codes)) {
@@ -59,8 +89,8 @@ export class PluginFeatureAPI {
     ipcMain.on('set-feature', (event, feature: DynamicFeature) => {
       try {
         console.log('[PluginFeature] set-feature', feature)
-        const pluginName = this.getPluginName(event)
-        if (!pluginName) {
+        const pluginRuntimeContext = this.getPluginRuntimeContext(event)
+        if (!pluginRuntimeContext) {
           event.returnValue = { success: false, error: 'Plugin not found' }
           return
         }
@@ -72,7 +102,10 @@ export class PluginFeatureAPI {
         }
 
         // 加载现有的动态 features
-        const features = this.loadDynamicFeatures(pluginName)
+        const features = this.loadDynamicFeatures(
+          pluginRuntimeContext.pluginName,
+          pluginRuntimeContext.pluginSource
+        )
 
         // 查找是否已存在该 code
         const existingIndex = features.findIndex((f) => f.code === feature.code)
@@ -86,7 +119,11 @@ export class PluginFeatureAPI {
         }
 
         // 保存到数据库
-        this.saveDynamicFeatures(pluginName, features)
+        this.saveDynamicFeatures(
+          pluginRuntimeContext.pluginName,
+          pluginRuntimeContext.pluginSource,
+          features
+        )
 
         // 通知渲染进程插件列表已变化
         this.notifyPluginsChanged()
@@ -105,14 +142,17 @@ export class PluginFeatureAPI {
     ipcMain.on('remove-feature', (event, code: string) => {
       try {
         console.log('[PluginFeature] remove-feature', code)
-        const pluginName = this.getPluginName(event)
-        if (!pluginName) {
+        const pluginRuntimeContext = this.getPluginRuntimeContext(event)
+        if (!pluginRuntimeContext) {
           event.returnValue = false
           return
         }
 
         // 加载现有的动态 features
-        const features = this.loadDynamicFeatures(pluginName)
+        const features = this.loadDynamicFeatures(
+          pluginRuntimeContext.pluginName,
+          pluginRuntimeContext.pluginSource
+        )
 
         // 查找要删除的 feature
         const index = features.findIndex((f) => f.code === code)
@@ -122,7 +162,11 @@ export class PluginFeatureAPI {
           features.splice(index, 1)
 
           // 保存到数据库
-          this.saveDynamicFeatures(pluginName, features)
+          this.saveDynamicFeatures(
+            pluginRuntimeContext.pluginName,
+            pluginRuntimeContext.pluginSource,
+            features
+          )
 
           // 通知渲染进程插件列表已变化
           this.notifyPluginsChanged()
@@ -139,19 +183,14 @@ export class PluginFeatureAPI {
   }
 
   /**
-   * 获取调用插件的名称
-   */
-  private getPluginName(event: Electron.IpcMainEvent): string | null {
-    const pluginInfo = this.pluginManager?.getPluginInfoByWebContents(event.sender)
-    return pluginInfo ? pluginInfo.name : null
-  }
-
-  /**
    * 从数据库加载动态 features
    */
-  public loadDynamicFeatures(pluginName: string): DynamicFeature[] {
+  public loadDynamicFeatures(
+    pluginName: string,
+    pluginSource: PluginSource = 'installed'
+  ): DynamicFeature[] {
     try {
-      const key = `PLUGIN/${pluginName}/dynamic-features`
+      const key = this.getDynamicFeaturesDocId(pluginName, pluginSource)
       const doc = lmdbInstance.get(key)
 
       if (doc && doc.data) {
@@ -169,9 +208,19 @@ export class PluginFeatureAPI {
   /**
    * 保存动态 features 到数据库
    */
-  private saveDynamicFeatures(pluginName: string, features: DynamicFeature[]): void {
-    const key = `PLUGIN/${pluginName}/dynamic-features`
+  private saveDynamicFeatures(
+    pluginName: string,
+    pluginSource: PluginSource,
+    features: DynamicFeature[]
+  ): void {
+    const key = this.getDynamicFeaturesDocId(pluginName, pluginSource)
     const existing = lmdbInstance.get(key)
+    console.log('[PluginFeature] 保存动态 Feature 到隔离命名空间:', {
+      pluginName,
+      pluginSource,
+      key,
+      featureCount: features.length
+    })
 
     const doc: any = {
       _id: key,
@@ -209,11 +258,16 @@ export class PluginFeatureAPI {
   /**
    * 清理插件的动态 features
    */
-  public clearPluginFeatures(pluginName: string): void {
+  public clearPluginFeatures(pluginName: string, pluginSource: PluginSource = 'installed'): void {
     try {
-      const key = `PLUGIN/${pluginName}/dynamic-features`
+      const key = this.getDynamicFeaturesDocId(pluginName, pluginSource)
       const doc = lmdbInstance.get(key)
       if (doc) {
+        console.log('[PluginFeature] 清理动态 Feature 隔离数据:', {
+          pluginName,
+          pluginSource,
+          key
+        })
         lmdbInstance.remove(key)
       }
     } catch (error) {

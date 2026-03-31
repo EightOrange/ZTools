@@ -677,12 +677,31 @@ window.ztools = {
     getAllPlugins: async () => await electron.ipcRenderer.invoke('internal:get-all-plugins'),
     selectPluginFile: async () => await electron.ipcRenderer.invoke('internal:select-plugin-file'),
     importPlugin: async () => await electron.ipcRenderer.invoke('internal:import-plugin'),
+    getDevProjects: async () => await electron.ipcRenderer.invoke('internal:get-dev-projects'),
     readPluginInfoFromZpx: async (zpxPath) =>
       await electron.ipcRenderer.invoke('internal:read-plugin-info-from-zpx', zpxPath),
     installPluginFromPath: async (zpxPath) =>
       await electron.ipcRenderer.invoke('internal:install-plugin-from-path', zpxPath),
     importDevPlugin: async (pluginPath) =>
       await electron.ipcRenderer.invoke('internal:import-dev-plugin', pluginPath),
+    removeDevProject: async (pluginName) =>
+      await electron.ipcRenderer.invoke('internal:remove-dev-project', pluginName),
+    installDevPlugin: async (pluginPath) =>
+      await electron.ipcRenderer.invoke('internal:install-dev-plugin', pluginPath),
+    uninstallDevPlugin: async (pluginPath) =>
+      await electron.ipcRenderer.invoke('internal:uninstall-dev-plugin', pluginPath),
+    validateDevProject: async (pluginName) =>
+      await electron.ipcRenderer.invoke('internal:validate-dev-project', pluginName),
+    reloadDevProject: async (pluginName) =>
+      await electron.ipcRenderer.invoke('internal:reload-dev-project', pluginName),
+    selectDevProjectConfig: async (pluginName, configPath) =>
+      await electron.ipcRenderer.invoke(
+        'internal:select-dev-project-config',
+        pluginName,
+        configPath
+      ),
+    packageDevProject: async (pluginName) =>
+      await electron.ipcRenderer.invoke('internal:package-dev-project', pluginName),
     deletePlugin: async (pluginPath) =>
       await electron.ipcRenderer.invoke('internal:delete-plugin', pluginPath),
     reloadPlugin: async (pluginPath) =>
@@ -699,16 +718,16 @@ window.ztools = {
       await electron.ipcRenderer.invoke('internal:install-plugin-from-npm', options),
     getPluginReadme: async (pluginPathOrName, pluginName) =>
       await electron.ipcRenderer.invoke('internal:get-plugin-readme', pluginPathOrName, pluginName),
-    getPluginDocKeys: async (pluginPath) =>
-      await electron.ipcRenderer.invoke('internal:get-plugin-doc-keys', pluginPath),
-    getPluginDoc: async (pluginPath, docKey) =>
-      await electron.ipcRenderer.invoke('internal:get-plugin-doc', pluginPath, docKey),
+    getPluginDocKeys: async (pluginRef) =>
+      await electron.ipcRenderer.invoke('internal:get-plugin-doc-keys', pluginRef),
+    getPluginDoc: async (pluginRef, docKey) =>
+      await electron.ipcRenderer.invoke('internal:get-plugin-doc', pluginRef, docKey),
     getPluginDataStats: async () =>
       await electron.ipcRenderer.invoke('internal:get-plugin-data-stats'),
-    clearPluginData: async (pluginName) =>
-      await electron.ipcRenderer.invoke('internal:clear-plugin-data', pluginName),
-    exportPluginData: async (pluginName) =>
-      await electron.ipcRenderer.invoke('internal:export-plugin-data', pluginName),
+    clearPluginData: async (pluginRef) =>
+      await electron.ipcRenderer.invoke('internal:clear-plugin-data', pluginRef),
+    exportPluginData: async (pluginRef) =>
+      await electron.ipcRenderer.invoke('internal:export-plugin-data', pluginRef),
     exportAllData: async () => await electron.ipcRenderer.invoke('internal:export-all-data'),
     packagePlugin: async (pluginPath) =>
       await electron.ipcRenderer.invoke('internal:package-plugin', pluginPath),

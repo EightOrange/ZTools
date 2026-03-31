@@ -16,6 +16,14 @@ interface Services {
   writeImageFile: (base64Url: string) => string | undefined
 }
 
+type PluginVariantRefInput =
+  | string
+  | {
+      pluginName: string
+      source: 'installed' | 'development'
+      path?: string
+    }
+
 declare global {
   interface Window {
     services: Services
@@ -73,7 +81,31 @@ declare global {
           error?: string
           plugin?: any
         }>
-        importDevPlugin: (pluginJsonPath?: string) => Promise<{ success: boolean; error?: string }>
+        // 获取当前记录的开发项目集合
+        getDevProjects: () => Promise<any[]>
+        // 导入开发中的插件工程，可选直接传入 plugin.json 路径
+        importDevPlugin: (pluginJsonPath?: string) => Promise<{
+          success: boolean
+          error?: string
+          pluginName?: string
+          pluginPath?: string
+        }>
+        // 从开发项目列表中移除指定项目，但保留磁盘目录
+        removeDevProject: (pluginName: string) => Promise<{ success: boolean; error?: string }>
+        // 将开发项目安装为开发模式插件
+        installDevPlugin: (pluginName: string) => Promise<{ success: boolean; error?: string }>
+        // 将开发项目从开发模式卸载
+        uninstallDevPlugin: (pluginName: string) => Promise<{ success: boolean; error?: string }>
+        // 校验当前设备绑定的开发项目配置
+        validateDevProject: (pluginName: string) => Promise<{ success: boolean; error?: string }>
+        // 重新读取 plugin.json 并刷新开发项目元数据
+        reloadDevProject: (pluginName: string) => Promise<{ success: boolean; error?: string }>
+        // 为当前设备重新选择开发项目配置文件
+        selectDevProjectConfig: (
+          pluginName: string
+        ) => Promise<{ success: boolean; error?: string }>
+        // 打包指定开发项目
+        packageDevProject: (pluginName: string) => Promise<{ success: boolean; error?: string }>
         deletePlugin: (pluginPath: string) => Promise<{ success: boolean; error?: string }>
         killPlugin: (pluginPath: string) => Promise<{ success: boolean; error?: string }>
         reloadPlugin: (pluginPath: string) => Promise<{ success: boolean; error?: string }>
@@ -115,13 +147,13 @@ declare global {
           content?: string
           error?: string
         }>
-        getPluginDocKeys: (pluginName: string) => Promise<{
+        getPluginDocKeys: (pluginRef: PluginVariantRefInput) => Promise<{
           success: boolean
           data?: Array<{ key: string; type: 'document' | 'attachment' }>
           error?: string
         }>
         getPluginDoc: (
-          pluginName: string,
+          pluginRef: PluginVariantRefInput,
           key: string
         ) => Promise<{
           success: boolean
@@ -134,15 +166,27 @@ declare global {
           data?: Array<{
             pluginName: string
             pluginTitle: string | null
+            pluginSource: 'installed' | 'development'
+            isDevelopment: boolean
             docCount: number
             attachmentCount: number
             logo: string | null
           }>
           error?: string
         }>
-        clearPluginData: (pluginName: string) => Promise<{
+        clearPluginData: (pluginRef: PluginVariantRefInput) => Promise<{
           success: boolean
           deletedCount?: number
+          error?: string
+        }>
+        exportPluginData: (pluginRef: PluginVariantRefInput) => Promise<{
+          success: boolean
+          folderPath?: string
+          error?: string
+        }>
+        exportAllData: () => Promise<{
+          success: boolean
+          folderPath?: string
           error?: string
         }>
         packagePlugin: (pluginPath: string) => Promise<{
@@ -401,7 +445,13 @@ declare global {
 
         // 固定/取消固定指令到搜索窗口
         pinApp: (app: any) => Promise<void>
-        unpinApp: (appPath: string, featureCode?: string, name?: string) => Promise<void>
+        // pluginSource 用于区分安装版与开发版同名插件
+        unpinApp: (
+          appPath: string,
+          featureCode?: string,
+          name?: string,
+          pluginSource?: 'installed' | 'development'
+        ) => Promise<void>
 
         // HTTP 服务
         httpServerGetConfig: () => Promise<{

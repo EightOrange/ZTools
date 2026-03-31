@@ -123,11 +123,18 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import {
+  includesPluginVariantRef,
+  resolvePluginVariantRefFromPlugins,
+  togglePluginVariantRef,
+  type PluginSource
+} from '../../../../shared/pluginVariantRef'
 import AdaptiveIcon from '../common/AdaptiveIcon.vue'
 
 const platform = ref<'darwin' | 'win32'>('darwin')
 const pluginName = ref('Plugin')
 const pluginId = ref('') // 插件的实际 name（用于数据库操作，与未分离状态保持一致）
+const pluginPath = ref('')
 const pluginLogo = ref<string | undefined>(undefined)
 const searchQuery = ref('')
 const subInputVisible = ref(true) // 子输入框是否可见
@@ -138,6 +145,44 @@ const acrylicDarkOpacity = ref(50) // 亚克力暗黑模式透明度（默认 50
 const aiRequestStatus = ref<'idle' | 'sending' | 'receiving'>('idle') // AI 请求状态
 const primaryColor = ref('blue')
 const customColor = ref('#db2777')
+
+interface CurrentPluginVariantRef {
+  /** 当前插件名称。 */
+  pluginName: string
+  /** 当前插件来源。 */
+  source: PluginSource
+}
+
+/**
+ * 解析分离窗口当前插件对应的安装/开发变体。
+ */
+async function resolveCurrentPluginVariantRef(): Promise<CurrentPluginVariantRef | null> {
+  if (!pluginId.value) {
+    return null
+  }
+
+  try {
+    const allPlugins = await window.ztools.getAllPlugins()
+    const resolvedRef = resolvePluginVariantRefFromPlugins(allPlugins, {
+      pluginName: pluginId.value,
+      pluginPath: pluginPath.value
+    })
+
+    if (resolvedRef) {
+      return {
+        pluginName: resolvedRef.pluginName,
+        source: resolvedRef.source
+      }
+    }
+  } catch (error) {
+    console.warn('解析分离窗口插件变体失败，回退到默认来源:', error)
+  }
+
+  return {
+    pluginName: pluginId.value,
+    source: 'installed'
+  }
+}
 
 function getThemeColor(colorName: string, isDark: boolean): string {
   const colors: Record<string, { light: string; dark: string }> = {
@@ -305,6 +350,7 @@ onMounted(async () => {
     platform.value = data.platform
     pluginName.value = data.title || data.pluginName
     pluginId.value = data.pluginName // 保存实际的插件 name，用于数据库读写
+    pluginPath.value = data.pluginPath || ''
     pluginLogo.value = data.pluginLogo
 
     // 设置窗口标题
@@ -411,13 +457,16 @@ async function showPluginSettings(): Promise<void> {
     console.log('读取到的配置数据:', { outKillPluginData, autoDetachPluginData })
 
     // 确保数据是数组
-    const outKillPluginList: string[] = Array.isArray(outKillPluginData) ? outKillPluginData : []
-    const autoDetachPluginList: string[] = Array.isArray(autoDetachPluginData)
+    const outKillPluginList: unknown[] = Array.isArray(outKillPluginData) ? outKillPluginData : []
+    const autoDetachPluginList: unknown[] = Array.isArray(autoDetachPluginData)
       ? autoDetachPluginData
       : []
 
-    const isAutoKill = outKillPluginList.includes(pluginId.value)
-    const isAutoDetach = autoDetachPluginList.includes(pluginId.value)
+    const currentPluginRef = await resolveCurrentPluginVariantRef()
+    const isAutoKill =
+      !!currentPluginRef && includesPluginVariantRef(outKillPluginList, currentPluginRef)
+    const isAutoDetach =
+      !!currentPluginRef && includesPluginVariantRef(autoDetachPluginList, currentPluginRef)
 
     // 显示菜单
     const menuItems = [
@@ -450,26 +499,18 @@ async function showPluginSettings(): Promise<void> {
     // 处理菜单选择结果
     if (result?.id === 'toggle-auto-kill') {
       // 切换"退出到后台立即结束运行"
-      let updatedList = [...outKillPluginList]
-      if (isAutoKill) {
-        // 取消勾选
-        updatedList = updatedList.filter((name) => name !== pluginId.value)
-      } else {
-        // 勾选
-        updatedList.push(pluginId.value)
+      if (!currentPluginRef) {
+        return
       }
+      const updatedList = togglePluginVariantRef(outKillPluginList, currentPluginRef)
       await window.ztools.dbPut('outKillPlugin', updatedList)
       console.log('已更新"退出到后台立即结束运行"配置:', updatedList)
     } else if (result?.id === 'toggle-auto-detach') {
       // 切换"自动分离为独立窗口"
-      let updatedList = [...autoDetachPluginList]
-      if (isAutoDetach) {
-        // 取消勾选
-        updatedList = updatedList.filter((name) => name !== pluginId.value)
-      } else {
-        // 勾选
-        updatedList.push(pluginId.value)
+      if (!currentPluginRef) {
+        return
       }
+      const updatedList = togglePluginVariantRef(autoDetachPluginList, currentPluginRef)
       await window.ztools.dbPut('autoDetachPlugin', updatedList)
       console.log('已更新"自动分离为独立窗口"配置:', updatedList)
     }

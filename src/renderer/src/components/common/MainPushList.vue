@@ -2,7 +2,10 @@
   <div v-if="items.length > 0" class="main-push-section">
     <div class="section-header" @click="$emit('enter-app')">
       <div class="section-title-row">
-        <img v-if="icon" :src="icon" class="section-icon" alt="" draggable="false" />
+        <div class="section-icon-wrap">
+          <img v-if="icon" :src="icon" class="section-icon" alt="" draggable="false" />
+          <span v-if="devBadge" class="section-dev-badge">{{ devBadge }}</span>
+        </div>
         <div class="section-title">{{ title }}</div>
       </div>
       <div class="section-action">进入应用 ›</div>
@@ -41,6 +44,7 @@ import { highlightSubstring } from '../../utils/highlight'
 interface Props {
   title: string
   icon?: string // 标题行图标
+  devBadge?: 'DEV'
   items: MainPushItem[]
   selectedIndex?: number
   searchQuery?: string // 搜索查询（用于高亮）
@@ -49,6 +53,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   selectedIndex: -1,
   icon: '',
+  devBadge: undefined,
   searchQuery: ''
 })
 
@@ -94,11 +99,36 @@ function getHighlightedText(text: string): string {
   gap: 5px;
 }
 
+.section-icon-wrap {
+  position: relative;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
 .section-icon {
   width: 15px;
   height: 15px;
   object-fit: contain;
   border-radius: 3px;
+}
+
+.section-dev-badge {
+  position: absolute;
+  right: -8px;
+  bottom: -6px;
+  display: inline-flex;
+  min-width: 18px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--bg-color);
+  border-radius: 999px;
+  background: var(--highlight-color);
+  color: var(--text-on-primary);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 4px;
 }
 
 .section-title {

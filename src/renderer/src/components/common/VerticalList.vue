@@ -2,7 +2,7 @@
   <div v-if="apps.length > 0" class="vertical-list">
     <div
       v-for="(app, index) in apps"
-      :key="app.name + '|' + app.path + (app.featureCode || '')"
+      :key="app.name + '|' + app.path + (app.pluginSource || '') + (app.featureCode || '')"
       class="list-item"
       :class="{ selected: index === selectedIndex }"
       @click="$emit('select', app)"
@@ -10,6 +10,7 @@
     >
       <div class="item-icon">
         <img v-if="app.icon" :src="app.icon" alt="" draggable="false" />
+        <span v-if="app.devBadge" class="item-dev-badge">{{ app.devBadge }}</span>
       </div>
       <div class="item-content">
         <!-- eslint-disable-next-line vue/no-v-html -->
@@ -89,6 +90,7 @@ function getSubtitle(app: Command): string {
 }
 
 .item-icon {
+  position: relative;
   flex-shrink: 0;
   width: 32px;
   height: 32px;
@@ -101,6 +103,24 @@ function getSubtitle(app: Command): string {
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+.item-dev-badge {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  display: inline-flex;
+  min-width: 18px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--bg-color);
+  border-radius: 999px;
+  background: var(--highlight-color);
+  color: var(--text-on-primary);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 4px;
 }
 
 .item-content {

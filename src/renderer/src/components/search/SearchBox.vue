@@ -218,6 +218,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { DEFAULT_AVATAR, useWindowStore } from '../../stores/windowStore'
+import {
+  includesPluginVariantRef,
+  resolvePluginVariantRefFromPlugins,
+  togglePluginVariantRef,
+  type PluginSource
+} from '../../../../shared/pluginVariantRef'
 import AdaptiveIcon from '../common/AdaptiveIcon.vue'
 import UpdateIcon from './UpdateIcon.vue'
 
@@ -257,6 +263,16 @@ const windowStore = useWindowStore()
 const searchBoxRef = ref<HTMLDivElement | null>(null)
 const searchActionsRef = ref<HTMLDivElement | null>(null)
 
+interface CurrentPluginVariantRef {
+  /** 当前插件名称。 */
+  pluginName: string
+  /** 当前插件来源。 */
+  source: PluginSource
+}
+
+/**
+ * 根据当前上下文选择搜索框占位文案。
+ */
 const placeholderText = computed(() => {
   // 如果在插件模式下,使用子输入框的 placeholder
   if (windowStore.currentPlugin) {
@@ -265,6 +281,63 @@ const placeholderText = computed(() => {
   // 否则使用全局 placeholder
   return windowStore.placeholder
 })
+
+/**
+ * 解析当前打开插件对应的安装/开发变体引用。
+ */
+async function resolveCurrentPluginVariantRef(): Promise<CurrentPluginVariantRef | null> {
+  if (!windowStore.currentPlugin) {
+    return null
+  }
+
+  try {
+    const allPlugins = await window.ztools.getAllPlugins()
+    const resolvedRef = resolvePluginVariantRefFromPlugins(allPlugins, {
+      pluginName: windowStore.currentPlugin.name,
+      pluginPath: windowStore.currentPlugin.path
+    })
+
+    if (resolvedRef) {
+      return {
+        pluginName: resolvedRef.pluginName,
+        source: resolvedRef.source
+      }
+    }
+  } catch (error) {
+    console.warn('解析当前插件变体失败，回退到默认来源:', error)
+  }
+
+  return {
+    pluginName: windowStore.currentPlugin.name,
+    source: 'installed'
+  }
+}
+
+/**
+ * 切换当前插件变体在指定行为设置中的选中状态。
+ */
+async function toggleCurrentPluginVariantSetting(
+  key: 'outKillPlugin' | 'autoDetachPlugin' | 'autoStartPlugin'
+): Promise<void> {
+  const currentPluginRef = await resolveCurrentPluginVariantRef()
+  if (!currentPluginRef) {
+    return
+  }
+
+  let currentList: unknown[] = []
+  try {
+    const data = await window.ztools.dbGet(key)
+    if (Array.isArray(data)) {
+      currentList = data
+    }
+  } catch (error) {
+    console.debug(`未找到 ${key} 配置`, error)
+  }
+
+  const nextList = togglePluginVariantRef(currentList, currentPluginRef)
+  await window.ztools.dbPut(key, nextList)
+  console.log(`已更新 ${key} 配置:`, nextList)
+}
 
 // 当前实际显示的占位符文字
 const currentPlaceholder = computed(() => {
@@ -847,96 +920,21 @@ onMounted(() => {
       }
     } else if (command === 'toggle-auto-kill') {
       try {
-        // 读取当前配置
-        let outKillPlugins: string[] = []
-        try {
-          const data = await window.ztools.dbGet('outKillPlugin')
-          if (data && Array.isArray(data)) {
-            outKillPlugins = data
-          }
-        } catch (error) {
-          console.debug('未找到outKillPlugin配置', error)
-        }
-
-        const currentPluginName = windowStore.currentPlugin!.name
-        const index = outKillPlugins.indexOf(currentPluginName)
-
-        if (index !== -1) {
-          // 已存在，移除
-          outKillPlugins.splice(index, 1)
-        } else {
-          // 不存在，添加
-          outKillPlugins.push(currentPluginName)
-        }
-
-        // 保存到数据库
-        await window.ztools.dbPut('outKillPlugin', outKillPlugins)
-
-        console.log('已更新 outKillPlugin 配置:', outKillPlugins)
+        await toggleCurrentPluginVariantSetting('outKillPlugin')
       } catch (error: any) {
         console.error('切换自动结束配置失败:', error)
         alert(`操作失败: ${error.message || '未知错误'}`)
       }
     } else if (command === 'toggle-auto-detach') {
       try {
-        // 读取当前配置
-        let autoDetachPlugins: string[] = []
-        try {
-          const data = await window.ztools.dbGet('autoDetachPlugin')
-          if (data && Array.isArray(data)) {
-            autoDetachPlugins = data
-          }
-        } catch (error) {
-          console.debug('未找到 autoDetachPlugin 配置', error)
-        }
-
-        const currentPluginName = windowStore.currentPlugin!.name
-        const index = autoDetachPlugins.indexOf(currentPluginName)
-
-        if (index !== -1) {
-          // 已存在，移除
-          autoDetachPlugins.splice(index, 1)
-        } else {
-          // 不存在，添加
-          autoDetachPlugins.push(currentPluginName)
-        }
-
-        // 保存到数据库
-        await window.ztools.dbPut('autoDetachPlugin', autoDetachPlugins)
-
-        console.log('已更新 autoDetachPlugin 配置:', autoDetachPlugins)
+        await toggleCurrentPluginVariantSetting('autoDetachPlugin')
       } catch (error: any) {
         console.error('切换自动分离配置失败:', error)
         alert(`操作失败: ${error.message || '未知错误'}`)
       }
     } else if (command === 'toggle-auto-start') {
       try {
-        // 读取当前配置
-        let autoStartPlugins: string[] = []
-        try {
-          const data = await window.ztools.dbGet('autoStartPlugin')
-          if (data && Array.isArray(data)) {
-            autoStartPlugins = data
-          }
-        } catch (error) {
-          console.debug('未找到 autoStartPlugin 配置', error)
-        }
-
-        const currentPluginName = windowStore.currentPlugin!.name
-        const index = autoStartPlugins.indexOf(currentPluginName)
-
-        if (index !== -1) {
-          // 已存在，移除
-          autoStartPlugins.splice(index, 1)
-        } else {
-          // 不存在，添加
-          autoStartPlugins.push(currentPluginName)
-        }
-
-        // 保存到数据库
-        await window.ztools.dbPut('autoStartPlugin', autoStartPlugins)
-
-        console.log('已更新 autoStartPlugin 配置:', autoStartPlugins)
+        await toggleCurrentPluginVariantSetting('autoStartPlugin')
       } catch (error: any) {
         console.error('切换跟随启动配置失败:', error)
         alert(`操作失败: ${error.message || '未知错误'}`)
@@ -977,9 +975,9 @@ async function handleSettingsClick(): Promise<void> {
     console.log('显示插件菜单')
 
     // 从数据库读取配置
-    let outKillPlugins: string[] = []
-    let autoDetachPlugins: string[] = []
-    let autoStartPlugins: string[] = []
+    let outKillPlugins: unknown[] = []
+    let autoDetachPlugins: unknown[] = []
+    let autoStartPlugins: unknown[] = []
     try {
       const killData = await window.ztools.dbGet('outKillPlugin')
       if (killData && Array.isArray(killData)) {
@@ -998,10 +996,13 @@ async function handleSettingsClick(): Promise<void> {
     }
 
     // 检查当前插件是否在列表中
-    const currentPluginName = windowStore.currentPlugin.name
-    const isAutoKill = outKillPlugins.includes(currentPluginName)
-    const isAutoDetach = autoDetachPlugins.includes(currentPluginName)
-    const isAutoStart = autoStartPlugins.includes(currentPluginName)
+    const currentPluginRef = await resolveCurrentPluginVariantRef()
+    const isAutoKill =
+      !!currentPluginRef && includesPluginVariantRef(outKillPlugins, currentPluginRef)
+    const isAutoDetach =
+      !!currentPluginRef && includesPluginVariantRef(autoDetachPlugins, currentPluginRef)
+    const isAutoStart =
+      !!currentPluginRef && includesPluginVariantRef(autoStartPlugins, currentPluginRef)
 
     // 根据平台显示不同的快捷键
     const platform = window.ztools.getPlatform()

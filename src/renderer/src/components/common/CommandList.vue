@@ -21,17 +21,20 @@
           @click="$emit('select', app)"
           @contextmenu.prevent="$emit('contextmenu', app)"
         >
-          <!-- 图片图标 (base64) -->
-          <AdaptiveIcon
-            v-if="app.icon && !hasIconError(app)"
-            :src="app.icon"
-            class="app-icon"
-            draggable="false"
-            @error="(e) => onIconError(e, app)"
-          />
-          <!-- 占位图标（无图标或加载失败时显示） -->
-          <div v-else class="app-icon-placeholder">
-            {{ app.name.charAt(0).toUpperCase() }}
+          <div class="app-icon-wrap">
+            <!-- 图片图标 (base64) -->
+            <AdaptiveIcon
+              v-if="app.icon && !hasIconError(app)"
+              :src="app.icon"
+              class="app-icon"
+              draggable="false"
+              @error="(e) => onIconError(e, app)"
+            />
+            <!-- 占位图标（无图标或加载失败时显示） -->
+            <div v-else class="app-icon-placeholder">
+              {{ app.name.charAt(0).toUpperCase() }}
+            </div>
+            <span v-if="app.devBadge" class="app-dev-badge">{{ app.devBadge }}</span>
           </div>
           <!-- eslint-disable-next-line vue/no-v-html -->
           <span class="app-name" v-html="getHighlightedName(app)"></span>
@@ -51,17 +54,20 @@
         @click="$emit('select', app)"
         @contextmenu.prevent="$emit('contextmenu', app)"
       >
-        <!-- 图片图标 (base64) -->
-        <AdaptiveIcon
-          v-if="app.icon && !hasIconError(app)"
-          :src="app.icon"
-          class="app-icon"
-          draggable="false"
-          @error="(e) => onIconError(e, app)"
-        />
-        <!-- 占位图标（无图标或加载失败时显示） -->
-        <div v-else class="app-icon-placeholder">
-          {{ app.name.charAt(0).toUpperCase() }}
+        <div class="app-icon-wrap">
+          <!-- 图片图标 (base64) -->
+          <AdaptiveIcon
+            v-if="app.icon && !hasIconError(app)"
+            :src="app.icon"
+            class="app-icon"
+            draggable="false"
+            @error="(e) => onIconError(e, app)"
+          />
+          <!-- 占位图标（无图标或加载失败时显示） -->
+          <div v-else class="app-icon-placeholder">
+            {{ app.name.charAt(0).toUpperCase() }}
+          </div>
+          <span v-if="app.devBadge" class="app-dev-badge">{{ app.devBadge }}</span>
         </div>
         <!-- eslint-disable-next-line vue/no-v-html -->
         <span class="app-name" v-html="getHighlightedName(app)"></span>
@@ -259,7 +265,6 @@ defineExpose({
 .app-icon {
   width: 32px;
   height: 32px;
-  margin-bottom: 6px;
   border-radius: 6px;
   flex-shrink: 0;
 }
@@ -267,7 +272,6 @@ defineExpose({
 .app-icon-placeholder {
   width: 32px;
   height: 32px;
-  margin-bottom: 6px;
   border-radius: 6px;
   background: var(--primary-gradient);
   display: flex;
@@ -277,6 +281,29 @@ defineExpose({
   font-size: 14px;
   font-weight: bold;
   flex-shrink: 0;
+}
+
+.app-icon-wrap {
+  position: relative;
+  margin-bottom: 6px;
+}
+
+.app-dev-badge {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  display: inline-flex;
+  min-width: 18px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--bg-color);
+  border-radius: 999px;
+  background: #389e0d;
+  color: var(--text-on-primary);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 4px;
 }
 
 .app-name {

@@ -8,6 +8,14 @@ export interface Command {
   subType?: string
 }
 
+type PluginVariantRefInput =
+  | string
+  | {
+      pluginName: string
+      source: 'installed' | 'development'
+      path?: string
+    }
+
 const api = {
   getApps: () => ipcRenderer.invoke('get-apps'),
   getSystemSettings: () => ipcRenderer.invoke('get-system-settings'),
@@ -49,6 +57,7 @@ const api = {
   getPlugins: () => ipcRenderer.invoke('get-plugins'),
   getAllPlugins: () => ipcRenderer.invoke('get-all-plugins'),
   importPlugin: () => ipcRenderer.invoke('import-plugin'),
+  // 导入开发中的插件工程，可选直接传入 plugin.json 路径
   importDevPlugin: (pluginJsonPath?: string) =>
     ipcRenderer.invoke('import-dev-plugin', pluginJsonPath),
   fetchPluginMarket: () => ipcRenderer.invoke('fetch-plugin-market'),
@@ -56,8 +65,8 @@ const api = {
     ipcRenderer.invoke('install-plugin-from-market', plugin),
   getPluginReadme: (pluginPath: string): Promise<any> =>
     ipcRenderer.invoke('get-plugin-readme', pluginPath),
-  getPluginDbData: (pluginName: string): Promise<any> =>
-    ipcRenderer.invoke('get-plugin-db-data', pluginName),
+  getPluginDbData: (pluginRef: PluginVariantRefInput): Promise<any> =>
+    ipcRenderer.invoke('get-plugin-db-data', pluginRef),
   installPluginFromNpm: (options: {
     packageName: string
     useChinaMirror?: boolean
@@ -78,12 +87,22 @@ const api = {
   selectAvatar: () => ipcRenderer.invoke('select-avatar'),
   openSettings: () => ipcRenderer.send('open-settings'),
   // 历史记录管理
-  removeFromHistory: (appPath: string, featureCode?: string, name?: string) =>
-    ipcRenderer.invoke('remove-from-history', appPath, featureCode, name),
+  // pluginSource 用于区分安装版与开发版同名插件
+  removeFromHistory: (
+    appPath: string,
+    featureCode?: string,
+    name?: string,
+    pluginSource?: 'installed' | 'development'
+  ) => ipcRenderer.invoke('remove-from-history', appPath, featureCode, name, pluginSource),
   // 固定应用管理
+  // pluginSource 用于区分安装版与开发版同名插件
   pinApp: (app: any) => ipcRenderer.invoke('pin-app', app),
-  unpinApp: (appPath: string, featureCode?: string, name?: string) =>
-    ipcRenderer.invoke('unpin-app', appPath, featureCode, name),
+  unpinApp: (
+    appPath: string,
+    featureCode?: string,
+    name?: string,
+    pluginSource?: 'installed' | 'development'
+  ) => ipcRenderer.invoke('unpin-app', appPath, featureCode, name, pluginSource),
   updatePinnedOrder: (newOrder: any[]) => ipcRenderer.invoke('update-pinned-order', newOrder),
   hidePlugin: () => ipcRenderer.send('hide-plugin'),
   setAssemblyTarget: (token: string) => ipcRenderer.invoke('set-assembly-target', token),
@@ -274,10 +293,12 @@ const api = {
   dbGet: (key: string) => ipcRenderer.invoke('ztools:db-get', key),
   // 插件数据管理
   getPluginDataStats: () => ipcRenderer.invoke('get-plugin-data-stats'),
-  getPluginDocKeys: (pluginName: string) => ipcRenderer.invoke('get-plugin-doc-keys', pluginName),
-  getPluginDoc: (pluginName: string, key: string) =>
-    ipcRenderer.invoke('get-plugin-doc', pluginName, key),
-  clearPluginData: (pluginName: string) => ipcRenderer.invoke('clear-plugin-data', pluginName),
+  getPluginDocKeys: (pluginRef: PluginVariantRefInput) =>
+    ipcRenderer.invoke('get-plugin-doc-keys', pluginRef),
+  getPluginDoc: (pluginRef: PluginVariantRefInput, key: string) =>
+    ipcRenderer.invoke('get-plugin-doc', pluginRef, key),
+  clearPluginData: (pluginRef: PluginVariantRefInput) =>
+    ipcRenderer.invoke('clear-plugin-data', pluginRef),
   // 软件更新
   updater: {
     checkUpdate: () => ipcRenderer.invoke('updater:check-update'),
@@ -461,6 +482,7 @@ declare global {
       getPlugins: () => Promise<any[]>
       getAllPlugins: () => Promise<any[]>
       importPlugin: () => Promise<{ success: boolean; error?: string }>
+      // 导入开发中的插件工程，可选直接传入 plugin.json 路径
       importDevPlugin: (pluginJsonPath?: string) => Promise<{ success: boolean; error?: string }>
       fetchPluginMarket: () => Promise<{ success: boolean; data?: any; error?: string }>
       installPluginFromMarket: (plugin: any) => Promise<{
@@ -500,10 +522,22 @@ declare global {
       }) => Promise<{ success: boolean; error?: string }>
       selectAvatar: () => Promise<{ success: boolean; path?: string; error?: string }>
       // 历史记录管理
-      removeFromHistory: (appPath: string, featureCode?: string, name?: string) => Promise<void>
+      // pluginSource 用于区分安装版与开发版同名插件
+      removeFromHistory: (
+        appPath: string,
+        featureCode?: string,
+        name?: string,
+        pluginSource?: 'installed' | 'development'
+      ) => Promise<void>
       // 固定应用管理
       pinApp: (app: any) => Promise<void>
-      unpinApp: (appPath: string, featureCode?: string, name?: string) => Promise<void>
+      // pluginSource 用于区分安装版与开发版同名插件
+      unpinApp: (
+        appPath: string,
+        featureCode?: string,
+        name?: string,
+        pluginSource?: 'installed' | 'development'
+      ) => Promise<void>
       updatePinnedOrder: (newOrder: any[]) => Promise<void>
       hidePlugin: () => void
       setAssemblyTarget: (token: string) => Promise<boolean>
@@ -581,19 +615,22 @@ declare global {
         success: boolean
         data?: Array<{
           pluginName: string
+          pluginTitle?: string | null
+          pluginSource: 'installed' | 'development'
+          isDevelopment: boolean
           docCount: number
           attachmentCount: number
           logo: string | null
         }>
         error?: string
       }>
-      getPluginDocKeys: (pluginName: string) => Promise<{
+      getPluginDocKeys: (pluginRef: PluginVariantRefInput) => Promise<{
         success: boolean
         data?: Array<{ key: string; type: 'document' | 'attachment' }>
         error?: string
       }>
       getPluginDoc: (
-        pluginName: string,
+        pluginRef: PluginVariantRefInput,
         key: string
       ) => Promise<{
         success: boolean
@@ -601,7 +638,7 @@ declare global {
         type?: 'document' | 'attachment'
         error?: string
       }>
-      clearPluginData: (pluginName: string) => Promise<{
+      clearPluginData: (pluginRef: PluginVariantRefInput) => Promise<{
         success: boolean
         deletedCount?: number
         error?: string

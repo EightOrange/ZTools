@@ -9,6 +9,8 @@ import lmdbInstance from './lmdb/lmdbInstance'
 import devToolsShortcut, { getDevToolsMode } from '../utils/devToolsShortcut'
 import { WINDOW_WIDTH } from '../common/constants'
 import { registerExternalLinkInterceptor } from '../managers/pluginManager'
+import type { PluginSource } from '../../shared/pluginVariantRef'
+import { getDetachedWindowSizeKey } from '../../shared/pluginRuntimeNamespace'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -26,6 +28,8 @@ interface DetachedWindowInfo {
   view: WebContentsView
   pluginPath: string
   pluginName: string
+  pluginSource: PluginSource
+  runtimeNamespace: string
   pluginLogo?: string
   isAlwaysOnTop: boolean
   lastFocusTarget: 'titlebar' | 'plugin' // 记录最后一次焦点位置，用于窗口恢复
@@ -59,12 +63,18 @@ class DetachedWindowManager {
   /**
    * 将分离窗口尺寸持久化到数据库（按插件名归档）
    */
-  private persistWindowSize(pluginName: string, width: number, viewHeight: number): void {
+  private persistWindowSize(
+    pluginName: string,
+    pluginSource: PluginSource,
+    width: number,
+    viewHeight: number
+  ): void {
     try {
       const normalizedWidth = Math.max(MIN_WINDOW_WIDTH, Math.round(width))
       const normalizedHeight = Math.max(MIN_VIEW_HEIGHT, Math.round(viewHeight))
+      const sizeKey = getDetachedWindowSizeKey(pluginName, pluginSource)
 
-      const lastSaved = this.lastSavedSizeByPlugin.get(pluginName)
+      const lastSaved = this.lastSavedSizeByPlugin.get(sizeKey)
       if (
         lastSaved &&
         lastSaved.width === normalizedWidth &&
@@ -76,14 +86,14 @@ class DetachedWindowManager {
       const existing = databaseAPI.dbGet('detachedWindowSizes') || {}
       const next = {
         ...(typeof existing === 'object' && existing !== null ? existing : {}),
-        [pluginName]: {
+        [sizeKey]: {
           width: normalizedWidth,
           height: normalizedHeight
         }
       }
 
       databaseAPI.dbPut('detachedWindowSizes', next)
-      this.lastSavedSizeByPlugin.set(pluginName, {
+      this.lastSavedSizeByPlugin.set(sizeKey, {
         width: normalizedWidth,
         height: normalizedHeight
       })
@@ -98,6 +108,7 @@ class DetachedWindowManager {
   private schedulePersistWindowSize(
     windowId: string,
     pluginName: string,
+    pluginSource: PluginSource,
     width: number,
     viewHeight: number
   ): void {
@@ -107,7 +118,7 @@ class DetachedWindowManager {
     }
 
     const timer = setTimeout(() => {
-      this.persistWindowSize(pluginName, width, viewHeight)
+      this.persistWindowSize(pluginName, pluginSource, width, viewHeight)
       this.resizeSaveTimers.delete(windowId)
     }, 300)
 
@@ -120,6 +131,8 @@ class DetachedWindowManager {
   public createDetachedWindow(
     pluginPath: string,
     pluginName: string,
+    pluginSource: PluginSource,
+    runtimeNamespace: string,
     pluginView: WebContentsView,
     options: {
       width: number
@@ -189,9 +202,15 @@ class DetachedWindowManager {
 
       // 标题栏加载完成后发送插件信息，并添加插件视图
       win.webContents.on('did-finish-load', () => {
-        console.log('[DetachedWindow] 标题栏加载完成，发送插件信息', pluginName, options)
+        console.log('[DetachedWindow] 标题栏加载完成，发送插件信息', {
+          pluginName,
+          pluginSource,
+          runtimeNamespace,
+          options
+        })
         win.webContents.send('init-titlebar', {
           pluginName,
+          pluginPath,
           pluginLogo: options.logo,
           platform: process.platform,
           title: options.title, // 窗口标题
@@ -245,6 +264,7 @@ class DetachedWindowManager {
           this.schedulePersistWindowSize(
             windowId,
             pluginName,
+            pluginSource,
             newBounds.width,
             newBounds.height - DETACHED_TITLEBAR_HEIGHT
           )
@@ -257,6 +277,8 @@ class DetachedWindowManager {
         view: pluginView,
         pluginPath,
         pluginName,
+        pluginSource,
+        runtimeNamespace,
         pluginLogo: options.logo,
         isAlwaysOnTop: false,
         lastFocusTarget: options.autoFocusSubInput ? 'titlebar' : 'plugin',
@@ -276,7 +298,7 @@ class DetachedWindowManager {
         if (!pluginView.webContents.isDestroyed()) {
           pluginView.webContents.close()
         }
-        console.log(`[DetachedWindow] 分离窗口已关闭: ${pluginName}`)
+        console.log(`[DetachedWindow] 分离窗口已关闭: ${pluginName} (${runtimeNamespace})`)
         // 更新 Dock 图标显示状态
         this.updateDockVisibility()
       })
@@ -324,7 +346,7 @@ class DetachedWindowManager {
       // 更新 Dock 图标显示状态
       this.updateDockVisibility()
 
-      console.log(`[DetachedWindow] 创建分离窗口成功: ${pluginName}`)
+      console.log(`[DetachedWindow] 创建分离窗口成功: ${pluginName} (${runtimeNamespace})`)
       return win
     } catch (error) {
       console.error('[DetachedWindow] 创建分离窗口失败:', error)

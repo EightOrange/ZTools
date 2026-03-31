@@ -13,6 +13,8 @@ interface CommandLike {
   name: string
   path: string
   pluginName?: string
+  pluginSource?: 'installed' | 'development'
+  devBadge?: 'DEV'
   featureCode?: string
   cmdType?: string
   subType?: string
@@ -21,11 +23,11 @@ interface CommandLike {
 
 /**
  * 生成指令唯一标识（与设置插件保持一致）
- * 格式: pluginName:featureCode:cmdName:cmdType
+ * 格式: pluginName:pluginSource:featureCode:cmdName:cmdType
  */
 export function getCommandId(cmd: CommandLike): string {
   const cmdType = cmd.cmdType || 'text'
-  return `${cmd.pluginName || ''}:${cmd.featureCode || ''}:${cmd.name}:${cmdType}`
+  return `${cmd.pluginName || ''}:${cmd.pluginSource || ''}:${cmd.featureCode || ''}:${cmd.name}:${cmdType}`
 }
 
 /**

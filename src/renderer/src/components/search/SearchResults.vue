@@ -62,6 +62,11 @@ import { useNavigation } from '../../composables/useNavigation'
 import { useSearchResults } from '../../composables/useSearchResults'
 import { useCommandDataStore } from '../../stores/commandDataStore'
 import { useWindowStore } from '../../stores/windowStore'
+import {
+  includesPluginVariantRef,
+  togglePluginVariantRef,
+  type PluginSource
+} from '../../../../shared/pluginVariantRef'
 import VerticalList from '../common/VerticalList.vue'
 import AggregateView from './AggregateView.vue'
 
@@ -78,6 +83,15 @@ interface FileItem {
   path: string
   name: string
   isDirectory: boolean
+}
+
+interface PluginVariantPayload {
+  /** 插件名称。 */
+  pluginName: string
+  /** 插件来源。 */
+  source: PluginSource
+  /** 插件路径，用于尽可能精确地命中同名变体。 */
+  path?: string
 }
 
 interface Props {
@@ -124,6 +138,48 @@ const { mainPushGroups, handleMainPushSelect } = useMainPushResults(props)
 // 内部状态
 const scrollContainerRef = ref<HTMLElement>()
 const showRecentInSearch = computed(() => windowStore.showRecentInSearch)
+
+/**
+ * 从搜索结果项中提取可持久化的插件变体载荷。
+ */
+function buildPluginVariantPayload(app: any): PluginVariantPayload | null {
+  if (!app?.pluginName) {
+    return null
+  }
+
+  return {
+    pluginName: app.pluginName,
+    source: (app.pluginSource || 'installed') as PluginSource,
+    path: app.path
+  }
+}
+
+/**
+ * 兼容旧格式并解析右键菜单中回传的插件变体载荷。
+ */
+function parsePluginVariantPayload(raw: string): PluginVariantPayload | null {
+  if (!raw) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed?.pluginName) {
+      return null
+    }
+
+    return {
+      pluginName: parsed.pluginName,
+      source: (parsed.source || parsed.pluginSource || 'installed') as PluginSource,
+      path: parsed.path
+    }
+  } catch {
+    return {
+      pluginName: raw,
+      source: 'installed'
+    }
+  }
+}
 
 // 是否有搜索内容
 
@@ -464,7 +520,12 @@ async function handleAppContextMenu(
   // 只在历史记录中显示"从使用记录删除"
   if (!fromSearch && !fromPinned) {
     menuItems.push({
-      id: `remove-from-history:${JSON.stringify({ path: app.path, featureCode: app.featureCode, name: app.name })}`,
+      id: `remove-from-history:${JSON.stringify({
+        path: app.path,
+        featureCode: app.featureCode,
+        name: app.pluginName || app.name,
+        pluginSource: app.pluginSource
+      })}`,
       label: '从使用记录删除'
     })
   }
@@ -489,9 +550,14 @@ async function handleAppContextMenu(
   }
 
   // 根据是否已固定显示不同选项
-  if (isPinned(app.path, app.featureCode, app.name)) {
+  if (isPinned(app.path, app.featureCode, app.pluginName || app.name, app.pluginSource)) {
     menuItems.push({
-      id: `unpin-app:${JSON.stringify({ path: app.path, featureCode: app.featureCode, name: app.name })}`,
+      id: `unpin-app:${JSON.stringify({
+        path: app.path,
+        featureCode: app.featureCode,
+        name: app.pluginName || app.name,
+        pluginSource: app.pluginSource
+      })}`,
       label: '从搜索框取消固定'
     })
   } else {
@@ -505,7 +571,9 @@ async function handleAppContextMenu(
         type: app.type,
         featureCode: app.featureCode,
         pluginName: app.pluginName,
-        pluginExplain: app.pluginExplain
+        pluginExplain: app.pluginExplain,
+        pluginSource: app.pluginSource,
+        devBadge: app.devBadge
       })}`,
       label: '固定到搜索框'
     })
@@ -527,6 +595,8 @@ async function handleAppContextMenu(
         featureCode: app.featureCode,
         pluginName: app.pluginName,
         pluginExplain: app.pluginExplain,
+        pluginSource: app.pluginSource,
+        devBadge: app.devBadge,
         cmdType: app.cmdType
       })}`,
       label: '固定到超级面板'
@@ -535,8 +605,8 @@ async function handleAppContextMenu(
 
   // 如果是插件，添加插件设置菜单
   if (app.type === 'plugin' && app.pluginName) {
-    let outKillPlugins: string[] = []
-    let autoDetachPlugins: string[] = []
+    let outKillPlugins: unknown[] = []
+    let autoDetachPlugins: unknown[] = []
     try {
       const killData = await window.ztools.dbGet('outKillPlugin')
       if (killData && Array.isArray(killData)) {
@@ -550,20 +620,23 @@ async function handleAppContextMenu(
       console.log('读取配置失败:', error)
     }
 
-    const isAutoKill = outKillPlugins.includes(app.pluginName)
-    const isAutoDetach = autoDetachPlugins.includes(app.pluginName)
+    const pluginVariantPayload = buildPluginVariantPayload(app)
+    const isAutoKill =
+      !!pluginVariantPayload && includesPluginVariantRef(outKillPlugins, pluginVariantPayload)
+    const isAutoDetach =
+      !!pluginVariantPayload && includesPluginVariantRef(autoDetachPlugins, pluginVariantPayload)
 
     menuItems.push({
       label: '插件设置',
       submenu: [
         {
-          id: `toggle-auto-kill:${app.pluginName}`,
+          id: `toggle-auto-kill:${JSON.stringify(pluginVariantPayload)}`,
           label: '退出到后台立即结束运行',
           type: 'checkbox',
           checked: isAutoKill
         },
         {
-          id: `toggle-auto-detach:${app.pluginName}`,
+          id: `toggle-auto-detach:${JSON.stringify(pluginVariantPayload)}`,
           label: '自动分离为独立窗口',
           type: 'checkbox',
           checked: isAutoDetach
@@ -572,7 +645,7 @@ async function handleAppContextMenu(
     })
 
     menuItems.push({
-      id: `view-plugin-detail:${app.pluginName}`,
+      id: `view-plugin-detail:${JSON.stringify(pluginVariantPayload)}`,
       label: '查看插件详情'
     })
   }
@@ -789,8 +862,8 @@ async function handleContextMenuCommand(command: string): Promise<void> {
   if (command.startsWith('remove-from-history:')) {
     const jsonStr = command.replace('remove-from-history:', '')
     try {
-      const { path, featureCode, name } = JSON.parse(jsonStr)
-      await removeFromHistory(path, featureCode, name)
+      const { path, featureCode, name, pluginSource } = JSON.parse(jsonStr)
+      await removeFromHistory(path, featureCode, name, pluginSource)
       nextTick(() => {
         emit('height-changed')
         emit('focus-input')
@@ -813,8 +886,8 @@ async function handleContextMenuCommand(command: string): Promise<void> {
   } else if (command.startsWith('unpin-app:')) {
     const jsonStr = command.replace('unpin-app:', '')
     try {
-      const { path, featureCode, name } = JSON.parse(jsonStr)
-      await unpinCommand(path, featureCode, name)
+      const { path, featureCode, name, pluginSource } = JSON.parse(jsonStr)
+      await unpinCommand(path, featureCode, name, pluginSource)
       nextTick(() => {
         emit('height-changed')
         emit('focus-input')
@@ -840,9 +913,9 @@ async function handleContextMenuCommand(command: string): Promise<void> {
       console.error('管理员启动失败:', error)
     }
   } else if (command.startsWith('toggle-auto-kill:')) {
-    const pluginName = command.replace('toggle-auto-kill:', '')
+    const pluginVariantPayload = parsePluginVariantPayload(command.replace('toggle-auto-kill:', ''))
     try {
-      let outKillPlugins: string[] = []
+      let outKillPlugins: unknown[] = []
       try {
         const data = await window.ztools.dbGet('outKillPlugin')
         if (data && Array.isArray(data)) {
@@ -852,20 +925,20 @@ async function handleContextMenuCommand(command: string): Promise<void> {
         console.debug('未找到outKillPlugin配置', error)
       }
 
-      const index = outKillPlugins.indexOf(pluginName)
-      if (index !== -1) {
-        outKillPlugins.splice(index, 1)
-      } else {
-        outKillPlugins.push(pluginName)
+      if (!pluginVariantPayload) {
+        return
       }
 
+      outKillPlugins = togglePluginVariantRef(outKillPlugins, pluginVariantPayload)
       await window.ztools.dbPut('outKillPlugin', outKillPlugins)
       console.log('已更新 outKillPlugin 配置:', outKillPlugins)
     } catch (error: any) {
       console.error('切换自动结束配置失败:', error)
     }
   } else if (command.startsWith('view-plugin-detail:')) {
-    const pluginName = command.replace('view-plugin-detail:', '')
+    const pluginVariantPayload = parsePluginVariantPayload(
+      command.replace('view-plugin-detail:', '')
+    )
     try {
       // 从 commandDataStore 中查找设置插件（已安装插件功能）的路径
       const settingCmd = commandDataStore.commands.find(
@@ -882,7 +955,7 @@ async function handleContextMenuCommand(command: string): Promise<void> {
           name: '已安装插件',
           cmdType: 'text',
           param: {
-            payload: pluginName,
+            payload: JSON.stringify(pluginVariantPayload),
             type: 'text'
           }
         })
@@ -893,9 +966,11 @@ async function handleContextMenuCommand(command: string): Promise<void> {
       console.error('查看插件详情失败:', error)
     }
   } else if (command.startsWith('toggle-auto-detach:')) {
-    const pluginName = command.replace('toggle-auto-detach:', '')
+    const pluginVariantPayload = parsePluginVariantPayload(
+      command.replace('toggle-auto-detach:', '')
+    )
     try {
-      let autoDetachPlugins: string[] = []
+      let autoDetachPlugins: unknown[] = []
       try {
         const data = await window.ztools.dbGet('autoDetachPlugin')
         if (data && Array.isArray(data)) {
@@ -905,13 +980,11 @@ async function handleContextMenuCommand(command: string): Promise<void> {
         console.debug('未找到 autoDetachPlugin 配置', error)
       }
 
-      const index = autoDetachPlugins.indexOf(pluginName)
-      if (index !== -1) {
-        autoDetachPlugins.splice(index, 1)
-      } else {
-        autoDetachPlugins.push(pluginName)
+      if (!pluginVariantPayload) {
+        return
       }
 
+      autoDetachPlugins = togglePluginVariantRef(autoDetachPlugins, pluginVariantPayload)
       await window.ztools.dbPut('autoDetachPlugin', autoDetachPlugins)
       console.log('已更新 autoDetachPlugin 配置:', autoDetachPlugins)
     } catch (error: any) {
