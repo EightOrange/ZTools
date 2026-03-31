@@ -192,9 +192,11 @@ app.on('before-quit', (event) => {
     // 不是主动退出（如 Command+Q），阻止退出
     event.preventDefault()
     console.log('[Main] 阻止了 Command+Q 退出，请使用托盘菜单退出')
+    const hasActivePlugin = pluginManager.getCurrentPluginPath() !== null
     // 仅在 killPlugin 内置快捷键启用时才隐藏窗口；
     // 禁用时意味着用户希望把 Cmd+Q 用作其他用途（如呼出快捷键），保持窗口可见
-    if (windowManager.isKillPluginShortcutEnabled()) {
+    // 插件模式下的 Cmd+Q 由 pluginManager 负责终止插件并返回搜索页，这里不再隐藏主窗口
+    if (windowManager.isKillPluginShortcutEnabled() && !hasActivePlugin) {
       windowManager.hideWindow(false)
     }
   } else {
