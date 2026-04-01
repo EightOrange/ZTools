@@ -9,6 +9,11 @@ import {
   applySpecialConfig as _applySpecialConfig,
   calculateMatchScore as _calculateMatchScore
 } from './commandUtils'
+import {
+  COMMAND_ALIASES_KEY,
+  normalizeCommandAliases,
+  type CommandAliasStore
+} from '@shared/commandShared'
 
 // 正则匹配指令
 interface RegexCmd {
@@ -74,7 +79,10 @@ export interface Command {
   name: string
   path: string // 纯路径（应用路径 或 插件根目录路径）
   icon?: string
+  // aliases 仅用于 Fuse 搜索字段，命中后仍复用原始指令对象
   aliases?: string[]
+  // aliasEntries 保留 alias 与自定义图标的完整映射，用于命中 alias 时切换展示图标
+  aliasEntries?: Array<{ alias: string; icon?: string }>
   pinyin?: string
   pinyinAbbr?: string
   acronym?: string // 英文首字母缩写（用于搜索）
@@ -93,6 +101,12 @@ export interface Command {
   settingUri?: string // ms-settings URI
   category?: string // 分类（用于分组显示）
   confirmDialog?: any // 确认对话框配置
+}
+
+interface SearchResultScoreMeta {
+  result: SearchResult
+  scoreText: string
+  scoreMatches: MatchInfo[]
 }
 
 // MainPush 功能信息
@@ -215,6 +229,44 @@ export const useCommandDataStore = defineStore('commandData', () => {
     return _getCommandId(cmd)
   }
 
+  async function loadCommandAliases(): Promise<CommandAliasStore> {
+    try {
+      const data = await window.ztools.dbGet(COMMAND_ALIASES_KEY)
+      // 统一在渲染层入口做一次归一化，兼容旧数据结构，避免后续搜索逻辑分散处理兼容分支
+      return normalizeCommandAliases(data)
+    } catch (error) {
+      console.error('加载指令别名失败:', error)
+      return {}
+    }
+  }
+
+  function getAliasEntryIcon(command: Command, alias: string | undefined): string | undefined {
+    if (!alias) {
+      return command.icon
+    }
+
+    // 命中 alias 时优先使用该 alias 对应的自定义图标，没有配置时回退到原指令图标
+    return command.aliasEntries?.find((entry) => entry.alias === alias)?.icon || command.icon
+  }
+
+  function enrichPluginTextCommand(command: Command, aliasesMap: CommandAliasStore): Command {
+    // alias 只作用于插件的文本指令；匹配指令和直接启动项保持原始行为
+    if (command.type !== 'plugin' || command.cmdType !== 'text') {
+      return command
+    }
+
+    const aliasEntries = aliasesMap[getCommandId(command)]
+    if (!aliasEntries?.length) {
+      return command
+    }
+
+    return {
+      ...command,
+      aliases: aliasEntries.map((entry) => entry.alias),
+      aliasEntries
+    }
+  }
+
   // 检查指令是否被禁用
   function isCommandDisabled(cmd: Command): boolean {
     const id = getCommandId(cmd)
@@ -300,7 +352,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
         loadHistoryData()
       })
 
-      // 监听指令列表变化事件（应用文件夹变化时触发）
+      // 监听指令列表变化事件（应用文件夹变化、插件变化或 alias 保存后触发）
       window.ztools.onAppsChanged(() => {
         loadCommands()
       })
@@ -436,10 +488,11 @@ export const useCommandDataStore = defineStore('commandData', () => {
   async function loadCommands(): Promise<void> {
     loading.value = true
     try {
-      const [rawApps, plugins, disabledPlugins] = await Promise.all([
+      const [rawApps, plugins, disabledPlugins, commandAliases] = await Promise.all([
         window.ztools.getApps(),
         window.ztools.getAllPlugins(), // 使用 getAllPlugins 获取所有插件（包括 system）
-        window.ztools.getDisabledPlugins()
+        window.ztools.getDisabledPlugins(),
+        loadCommandAliases()
       ])
       setDisabledPluginPaths(disabledPlugins)
       const enabledPluginPaths = getEnabledPluginPaths(plugins)
@@ -483,6 +536,8 @@ export const useCommandDataStore = defineStore('commandData', () => {
         return result
       })
 
+      // alias 会在构建插件文本指令阶段注入到原始 command 上，
+      // 这样 Fuse 建索引时即可直接搜索 alias，而不需要为 alias 额外生成独立指令
       // 处理插件：每个 cmd 转换为一个独立指令
       const pluginItems: Command[] = [] // 普通插件指令
       const regexItems: Command[] = [] // 正则匹配指令
@@ -594,28 +649,33 @@ export const useCommandDataStore = defineStore('commandData', () => {
                   })
                 } else {
                   // 功能指令（文本类型）
-                  pluginItems.push({
-                    name: cmdName,
-                    path: plugin.path,
-                    icon: featureIcon,
-                    type: 'plugin',
-                    featureCode: feature.code,
-                    pluginName: plugin.name,
-                    pluginTitle: plugin.title,
-                    pluginExplain: feature.explain,
-                    cmdType: 'text', // 标记为文本类型
-                    mainPush: isMainPush,
-                    pinyin: pinyin(cmdName, { toneType: 'none', type: 'string' })
-                      .replace(/\s+/g, '')
-                      .toLowerCase(),
-                    pinyinAbbr: pinyin(cmdName, {
-                      pattern: 'first',
-                      toneType: 'none',
-                      type: 'string'
-                    })
-                      .replace(/\s+/g, '')
-                      .toLowerCase()
-                  })
+                  pluginItems.push(
+                    enrichPluginTextCommand(
+                      {
+                        name: cmdName,
+                        path: plugin.path,
+                        icon: featureIcon,
+                        type: 'plugin',
+                        featureCode: feature.code,
+                        pluginName: plugin.name,
+                        pluginTitle: plugin.title,
+                        pluginExplain: feature.explain,
+                        cmdType: 'text', // 标记为文本类型
+                        mainPush: isMainPush,
+                        pinyin: pinyin(cmdName, { toneType: 'none', type: 'string' })
+                          .replace(/\s+/g, '')
+                          .toLowerCase(),
+                        pinyinAbbr: pinyin(cmdName, {
+                          pattern: 'first',
+                          toneType: 'none',
+                          type: 'string'
+                        })
+                          .replace(/\s+/g, '')
+                          .toLowerCase()
+                      },
+                      commandAliases
+                    )
+                  )
                 }
               }
             }
@@ -678,9 +738,11 @@ export const useCommandDataStore = defineStore('commandData', () => {
       )
 
       // 初始化 Fuse.js 搜索引擎
+      // alias 权重略低于 name，既允许用户通过别名命中，也避免别名完全压过原始指令名
       fuse.value = new Fuse(commands.value, {
         keys: [
           { name: 'name', weight: 2 }, // 名称权重最高
+          { name: 'aliases', weight: 1.8 }, // 指令别名略低于名称
           { name: 'pinyin', weight: 1.5 }, // 拼音
           { name: 'pinyinAbbr', weight: 1 }, // 拼音首字母
           { name: 'acronym', weight: 1.5 } // 英文首字母缩写
@@ -740,6 +802,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
         ? new Fuse(commandList, {
             keys: [
               { name: 'name', weight: 2 },
+              { name: 'aliases', weight: 1.8 },
               { name: 'pinyin', weight: 1.5 },
               { name: 'pinyinAbbr', weight: 1 },
               { name: 'acronym', weight: 1.5 }
@@ -752,36 +815,47 @@ export const useCommandDataStore = defineStore('commandData', () => {
         : fuse.value
 
       const fuseResults = searchFuse.search(query)
-      bestMatches = fuseResults
-        .map((r) => {
+      const scoredMatches: SearchResultScoreMeta[] = fuseResults.map((r) => {
+          const aliasMatch = r.matches?.find((match) => match.key === 'aliases') as MatchInfo | undefined
+          const displayMatches = ((r.matches || []).filter((match) => match.key !== 'aliases') || []) as MatchInfo[]
+          // alias 命中时，排序分数基于命中的 alias 文本计算；界面展示仍沿用原始指令对象
+          const scoreText = aliasMatch ? aliasMatch.value || r.item.name : r.item.name
+          const scoreMatches = aliasMatch ? [aliasMatch] : displayMatches
+
           // 检测匹配类型（用于前端高亮算法选择）
           let matchType: 'acronym' | 'name' | 'pinyin' | 'pinyinAbbr' | undefined
-          if (r.matches && r.matches.length > 0) {
-            // 优先级：acronym > name > pinyin > pinyinAbbr
-            if (r.matches.some((m) => m.key === 'acronym')) {
+          if ((r.matches || []).length > 0) {
+            // 优先级：acronym > name > aliases > pinyin > pinyinAbbr
+            if ((r.matches || []).some((m) => m.key === 'acronym')) {
               matchType = 'acronym'
-            } else if (r.matches.some((m) => m.key === 'name')) {
+            } else if ((r.matches || []).some((m) => m.key === 'name' || m.key === 'aliases')) {
               matchType = 'name'
-            } else if (r.matches.some((m) => m.key === 'pinyin')) {
+            } else if ((r.matches || []).some((m) => m.key === 'pinyin')) {
               matchType = 'pinyin'
-            } else if (r.matches.some((m) => m.key === 'pinyinAbbr')) {
+            } else if ((r.matches || []).some((m) => m.key === 'pinyinAbbr')) {
               matchType = 'pinyinAbbr'
             }
           }
 
           return {
-            ...r.item,
-            matches: r.matches as MatchInfo[],
-            matchType,
-            _score: r.score || 0
+            result: {
+              ...r.item,
+              icon: aliasMatch ? getAliasEntryIcon(r.item, aliasMatch.value) : r.item.icon,
+              matches: displayMatches,
+              matchType
+            },
+            scoreText,
+            scoreMatches
           }
         })
+      bestMatches = scoredMatches
         .sort((a, b) => {
           // 自定义排序：优先连续匹配，系统应用权重略高
-          const scoreA = calculateMatchScore(a.name, query, a.matches, a)
-          const scoreB = calculateMatchScore(b.name, query, b.matches, b)
+          const scoreA = calculateMatchScore(a.scoreText, query, a.scoreMatches, a.result)
+          const scoreB = calculateMatchScore(b.scoreText, query, b.scoreMatches, b.result)
           return scoreB - scoreA // 分数高的排前面
         })
+        .map((item) => item.result)
 
       // 搜索偏好置顶：将上次选中的指令移到第一位
       const prefKey = query.trim().toLowerCase()
@@ -853,9 +927,9 @@ export const useCommandDataStore = defineStore('commandData', () => {
     }
 
     // 应用特殊指令配置（确保图标等属性正确）
-    const processedBestMatches = bestMatches
-      .filter((cmd) => !isCommandDisabled(cmd))
-      .map((cmd) => applySpecialConfig(cmd))
+    // bestMatches 中 alias 命中时已经在 Fuse 结果阶段切换过 icon；
+    // 这里不要再次应用特殊配置，否则会把 alias 自定义图标覆盖回原图标。
+    const processedBestMatches = bestMatches.filter((cmd) => !isCommandDisabled(cmd))
     const processedRegexMatches = regexMatches
       .filter((cmd) => !isCommandDisabled(cmd))
       .map((cmd) => applySpecialConfig(cmd))
