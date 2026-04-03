@@ -1,4 +1,5 @@
 import os from 'os'
+import { clipboard } from 'electron'
 
 // 根据平台加载对应的原生模块
 const platform = os.platform()
@@ -101,6 +102,7 @@ type MouseButtonType = 'middle' | 'right' | 'back' | 'forward'
 export class ClipboardMonitor {
   private _callback: (() => void) | null = null
   private _isMonitoring = false
+  private _pollTimer: ReturnType<typeof setInterval> | null = null
 
   /**
    * 启动剪贴板监控
@@ -117,11 +119,26 @@ export class ClipboardMonitor {
 
     this._callback = callback
     this._isMonitoring = true
-    ;(addon as NativeAddon).startMonitor(() => {
-      if (this._callback) {
-        this._callback()
-      }
-    })
+
+    if (platform === 'linux') {
+      // Linux 降级：使用 Electron clipboard 轮询（每 500ms 检测一次变化）
+      let lastText = clipboard.readText()
+      this._pollTimer = setInterval(() => {
+        const current = clipboard.readText()
+        if (current !== lastText) {
+          lastText = current
+          if (this._callback) {
+            this._callback()
+          }
+        }
+      }, 500)
+    } else {
+      ;(addon as NativeAddon).startMonitor(() => {
+        if (this._callback) {
+          this._callback()
+        }
+      })
+    }
   }
 
   /**
@@ -132,7 +149,14 @@ export class ClipboardMonitor {
       return
     }
 
-    ;(addon as NativeAddon).stopMonitor()
+    if (platform === 'linux') {
+      if (this._pollTimer !== null) {
+        clearInterval(this._pollTimer)
+        this._pollTimer = null
+      }
+    } else {
+      ;(addon as NativeAddon).stopMonitor()
+    }
     this._isMonitoring = false
     this._callback = null
   }
@@ -215,11 +239,17 @@ export class WindowMonitor {
 
     this._callback = callback
     this._isMonitoring = true
-    ;(addon as NativeAddon).startWindowMonitor((windowInfo) => {
-      if (this._callback) {
-        this._callback(windowInfo)
-      }
-    })
+
+    if (platform === 'linux') {
+      // Linux 降级：暂不支持窗口焦点监控，静默忽略
+      console.warn('[WindowMonitor] Linux 平台暂不支持原生窗口监控，功能已降级')
+    } else {
+      ;(addon as NativeAddon).startWindowMonitor((windowInfo) => {
+        if (this._callback) {
+          this._callback(windowInfo)
+        }
+      })
+    }
   }
 
   /**
@@ -230,7 +260,9 @@ export class WindowMonitor {
       return
     }
 
-    ;(addon as NativeAddon).stopWindowMonitor()
+    if (platform !== 'linux') {
+      ;(addon as NativeAddon).stopWindowMonitor()
+    }
     this._isMonitoring = false
     this._callback = null
   }
