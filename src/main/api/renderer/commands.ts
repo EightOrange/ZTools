@@ -39,6 +39,12 @@ export class AppsAPI {
   private isLocalAppSearchEnabled = true
   private cachedCommandsResult: { commands: any[]; regexCommands: any[]; plugins: any[] } | null =
     null
+  /** 由外部注入，用于在多屏场景下正确显示窗口（跟随光标所在屏幕） */
+  private showWindowCallback?: () => void
+
+  public setShowWindowCallback(callback: () => void): void {
+    this.showWindowCallback = callback
+  }
 
   /**
    * 安全地向渲染进程发送消息
@@ -343,7 +349,12 @@ export class AppsAPI {
       this.notifyRenderer('show-plugin-placeholder')
       // 检查主窗口是否可见
       if (!this.mainWindow?.isVisible()) {
-        this.mainWindow?.show()
+        // 使用注入的回调（会跟随光标所在屏幕），降级到直接 show()
+        if (this.showWindowCallback) {
+          this.showWindowCallback()
+        } else {
+          this.mainWindow?.show()
+        }
       }
 
       // 在主窗口中创建插件

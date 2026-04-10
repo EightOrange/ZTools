@@ -91,6 +91,7 @@ class APIManager {
     // 初始化主程序API
     aiModelsAPI.init()
     appsAPI.init(mainWindow, pluginManager)
+    appsAPI.setShowWindowCallback(() => windowManager.showWindow())
     pluginsAPI.init(mainWindow, pluginManager)
     windowAPI.init(mainWindow)
     settingsAPI.init(mainWindow, pluginManager)
