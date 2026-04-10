@@ -179,7 +179,7 @@ export class PluginInstallerAPI {
       if (existingIndex !== -1) {
         console.log('[Plugins] 插件已存在，执行覆盖安装:', pluginName)
         try {
-          await this.deps.pluginManager?.killPluginByName?.(pluginName)
+          this.deps.pluginManager?.killPluginByName(pluginName)
         } catch {
           // 忽略终止错误
         }
@@ -239,6 +239,31 @@ export class PluginInstallerAPI {
       // 自动检测格式并安装
       const { config: marketConfig, isZpx } = await this.readPluginJson(tempFilePath)
       console.log(`[Plugins] 市场插件格式: ${isZpx ? 'ZPX' : 'ZIP（兼容）'}`)
+
+      // 覆盖安装：若插件已存在则先清理旧版本（不清除插件 LMDB 数据）
+      const marketPluginName = marketConfig.name
+      const marketPluginPath = path.join(PLUGIN_DIR, marketPluginName)
+      const existingPluginsForMarket: any[] = databaseAPI.dbGet('plugins') || []
+      const existingMarketIndex = existingPluginsForMarket.findIndex(
+        (p: any) => p.name === marketPluginName
+      )
+      if (existingMarketIndex !== -1) {
+        console.log('[Plugins] 插件已存在，执行覆盖升级（保留数据）:', marketPluginName)
+        try {
+          this.deps.pluginManager?.killPluginByName(marketPluginName)
+        } catch {
+          // 忽略终止错误
+        }
+        existingPluginsForMarket.splice(existingMarketIndex, 1)
+        databaseAPI.dbPut('plugins', existingPluginsForMarket)
+        try {
+          await fs.rm(marketPluginPath, { recursive: true, force: true })
+          console.log('[Plugins] 已删除旧插件目录:', marketPluginPath)
+        } catch {
+          // 忽略删除错误
+        }
+      }
+
       const result = await this.installFromPackageFile(tempFilePath, isZpx, marketConfig)
 
       try {
@@ -370,7 +395,7 @@ export class PluginInstallerAPI {
 
         // 终止正在运行的插件
         try {
-          await this.deps.pluginManager?.killPluginByName?.(pluginName)
+          this.deps.pluginManager?.killPluginByName(pluginName)
         } catch {
           // 忽略终止错误
         }
