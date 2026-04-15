@@ -452,14 +452,7 @@ export class PluginsAPI {
         }
       }
 
-      try {
-        this.pluginManager?.killPlugin(pluginPath)
-      } catch (error) {
-        console.warn('[Plugins] failed to release running plugin before delete:', {
-          pluginPath,
-          error
-        })
-      }
+      this.pluginManager?.killPlugin(pluginPath)
 
       plugins.splice(pluginIndex, 1)
       databaseAPI.dbPut('plugins', plugins)

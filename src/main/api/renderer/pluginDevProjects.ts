@@ -493,16 +493,13 @@ export class PluginDevProjectsAPI {
       const installedDevPlugin = plugins.find(
         (p) => p?.isDevelopment && p?.name === devEffectiveName
       )
-      const runningPluginPath =
-        typeof installedDevPlugin?.path === 'string' && installedDevPlugin.path
-          ? installedDevPlugin.path
-          : registryEntry.projectPath
+      const killPath = installedDevPlugin?.path || registryEntry.projectPath
 
-      if (typeof runningPluginPath === 'string' && runningPluginPath) {
-        this.deps.pluginManager?.killPlugin(runningPluginPath)
+      if (killPath) {
+        this.deps.pluginManager?.killPlugin(killPath)
       }
 
-      if (installedDevPlugin?.isDevelopment) {
+      if (installedDevPlugin) {
         this.deps.writeInstalledPlugins(
           plugins.filter((p) => !(p?.isDevelopment && p?.name === devEffectiveName))
         )
