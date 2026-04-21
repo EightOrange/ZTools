@@ -1,4 +1,4 @@
-import { desktopCapturer, screen, nativeImage, BrowserWindow } from 'electron'
+import { desktopCapturer, screen } from 'electron'
 import { promises as fs } from 'fs'
 import path from 'path'
 import { app } from 'electron'
@@ -393,7 +393,7 @@ public class WinInput {
     })
   }
 
-  private simulateScrollMac(region: CaptureRegion, delta: number): Promise<void> {
+  private simulateScrollMac(_region: CaptureRegion, delta: number): Promise<void> {
     return new Promise((resolve, reject) => {
       const script = `
 tell application "System Events"
@@ -407,7 +407,7 @@ end tell`
     })
   }
 
-  private simulateScrollLinux(region: CaptureRegion, delta: number): Promise<void> {
+  private simulateScrollLinux(_region: CaptureRegion, delta: number): Promise<void> {
     return new Promise((resolve, reject) => {
       const { exec } = require('child_process')
       const clicks = delta

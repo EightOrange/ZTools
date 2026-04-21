@@ -44,7 +44,10 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'region-selected': [region: { x: number; y: number; width: number; height: number }]
+  'region-selected': [
+    region: { x: number; y: number; width: number; height: number },
+    croppedDataUrl: string
+  ]
   cancel: []
 }>()
 

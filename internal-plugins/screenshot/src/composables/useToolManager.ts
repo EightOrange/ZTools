@@ -1,9 +1,12 @@
-import { ref, watch, type Ref } from 'vue'
+import { ref, watch, type Ref, type ShallowRef } from 'vue'
 import type { Canvas as FabricCanvas, TPointerEventInfo } from 'fabric'
 import { ToolType, createTool, DEFAULT_TOOL_OPTIONS } from '../tools'
 import type { AnnotationTool, ToolOptions } from '../tools'
 
-export function useToolManager(canvas: Ref<FabricCanvas | null>, onObjectModified?: () => void) {
+export function useToolManager(
+  canvas: Ref<FabricCanvas | null> | ShallowRef<FabricCanvas | null>,
+  onObjectModified?: () => void
+) {
   const currentToolType = ref<ToolType | null>(null)
   const options = ref<ToolOptions>({ ...DEFAULT_TOOL_OPTIONS })
   let activeTool: AnnotationTool | null = null

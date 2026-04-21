@@ -33,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, shallowRef, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { Canvas as FabricCanvas, FabricImage } from 'fabric'
 import Toolbar from './Toolbar.vue'
 import OcrResultPanel from './OcrResultPanel.vue'
@@ -57,7 +57,7 @@ const emit = defineEmits<{
 const fabricCanvasRef = ref<HTMLCanvasElement>()
 let fabricCanvas: FabricCanvas | null = null
 
-const fabricCanvasRef2 = ref<FabricCanvas | null>(null)
+const fabricCanvasRef2 = shallowRef<FabricCanvas | null>(null)
 
 const history = useAnnotationHistory(() => fabricCanvasRef2.value)
 const toolManager = useToolManager(fabricCanvasRef2, () => history.saveState())

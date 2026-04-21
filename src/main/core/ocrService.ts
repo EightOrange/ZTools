@@ -11,8 +11,6 @@ interface OcrResult {
 
 class OcrService {
   private tesseractWorker: any = null
-  private tesseractReady = false
-
   async recognize(imageInput: string | Buffer, lang = 'zh-Hans'): Promise<OcrResult> {
     if (process.platform === 'win32') {
       try {
@@ -208,7 +206,7 @@ $output | ConvertTo-Json -Depth 3
         await this.tesseractWorker.terminate()
       } catch {}
       this.tesseractWorker = null
-      this.tesseractReady = false
+      // tesseract worker cleaned up
     }
     try {
       const tempDir = path.join(app.getPath('temp'), 'ztools-ocr')

@@ -47,7 +47,7 @@ watch(
   }
 )
 
-async function copyText(): void {
+async function copyText(): Promise<void> {
   if (!props.text) return
   try {
     await navigator.clipboard.writeText(props.text)
