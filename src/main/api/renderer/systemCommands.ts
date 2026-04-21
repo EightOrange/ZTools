@@ -5,6 +5,7 @@ import { promisify } from 'util'
 import { GLOBAL_SCROLLBAR_CSS } from '../../core/globalStyles'
 import { screenCapture } from '../../core/screenCapture'
 import windowManager from '../../managers/windowManager'
+import screenshotManager from '../../core/screenshotManager'
 import webSearchAPI from './webSearch'
 import databaseAPI from '../shared/database'
 import { ColorPicker } from '../../core/native/index.js'
@@ -211,26 +212,14 @@ async function handleDynamicWebSearch(
   return handleWebSearch(ctx, param, engine.url, engine.name)
 }
 
-async function handleScreenshot(ctx: SystemCommandContext): Promise<any> {
-  console.log('[SystemCmd] 执行截图')
-
+async function handleScreenshot(_ctx: SystemCommandContext): Promise<any> {
+  console.log('[SystemCmd] 执行截图（新版截图管理器）')
   try {
-    const result = await screenCapture(ctx.mainWindow || undefined, false)
-    if (!result.image) {
-      return { success: false, error: '未获取到截图内容' }
-    }
-
-    clipboard.writeImage(nativeImage.createFromDataURL(result.image))
-
-    new Notification({
-      title: 'ZTools',
-      body: '截图已复制到剪贴板'
-    }).show()
-
+    await screenshotManager.startCapture()
     return { success: true }
   } catch (error) {
     console.error('[SystemCmd] 截图失败:', error)
-    return { success: false, error: String(error) }
+    return { success: false, error: error instanceof Error ? error.message : '截图失败' }
   }
 }
 
