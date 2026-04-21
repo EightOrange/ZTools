@@ -1,0 +1,15 @@
+{
+  "name": "screenshot",
+  "title": "截图",
+  "version": "1.0.0",
+  "description": "全功能截图工具：截图、标注、OCR、长截图、悬浮窗",
+  "author": "ZTools",
+  "logo": "logo.png",
+  "features": [
+    {
+      "code": "screenshot",
+      "explain": "截图",
+      "cmds": ["截图", "screenshot", "截屏", "ss"]
+    }
+  ]
+}
