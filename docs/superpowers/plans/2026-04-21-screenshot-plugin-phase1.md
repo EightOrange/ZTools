@@ -197,6 +197,9 @@ export default defineConfig({
 
 - [ ] **Step 5: Create `internal-plugins/screenshot/public/plugin.json`**
 
+NOTE: No `main` field — this is a headless plugin like `system`. The screenshot UI lives in
+a separate overlay BrowserWindow created by ScreenshotManager, not in a plugin WebContentsView.
+
 ```json
 {
   "name": "screenshot",
@@ -205,10 +208,6 @@ export default defineConfig({
   "description": "全功能截图工具：截图、标注、OCR、长截图、悬浮窗",
   "author": "ZTools",
   "logo": "logo.png",
-  "main": "index.html",
-  "development": {
-    "main": "http://localhost:5178"
-  },
   "features": [
     {
       "code": "screenshot",
@@ -417,9 +416,10 @@ git commit -m "feat(screenshot): register as internal plugin in build system"
 - [ ] **Step 1: Create `src/main/core/screenshotManager.ts`**
 
 ```typescript
-import { BrowserWindow, desktopCapturer, globalShortcut, screen, nativeImage } from 'electron'
+import { BrowserWindow, app, desktopCapturer, globalShortcut, screen, nativeImage } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import path from 'path'
+import { promises as fs } from 'fs'
 import databaseAPI from '../api/shared/database.js'
 
 const DEFAULT_HOTKEY = 'Ctrl+Shift+A'
@@ -459,21 +459,18 @@ class ScreenshotManager {
         }
       })
 
+      // FIX #5: Use temp files instead of data URLs for better performance
+      const tempDir = path.join(app.getPath('temp'), 'ztools-screenshot')
+      await fs.mkdir(tempDir, { recursive: true })
+
       for (const display of displays) {
-        const source =
-          sources.find((s) => {
-            const sourceDisplay = screen.getDisplayMatching({
-              x: display.bounds.x,
-              y: display.bounds.y,
-              width: display.bounds.width,
-              height: display.bounds.height
-            })
-            return sourceDisplay.id === display.id
-          }) || sources[0]
+        // FIX #7: Use display_id for reliable multi-monitor matching
+        const source = sources.find((s) => s.display_id === String(display.id)) || sources[0]
 
         if (source) {
-          const dataUrl = source.thumbnail.toDataURL()
-          this.createOverlayWindow(display, dataUrl)
+          const tempPath = path.join(tempDir, `capture-${display.id}.png`)
+          await fs.writeFile(tempPath, source.thumbnail.toPNG())
+          this.createOverlayWindow(display, tempPath)
         }
       }
     } catch (error) {
@@ -481,31 +478,39 @@ class ScreenshotManager {
     }
   }
 
-  private createOverlayWindow(display: Electron.Display, screenshotDataUrl: string): void {
+  private createOverlayWindow(display: Electron.Display, screenshotFilePath: string): void {
     const { bounds } = display
 
-    const overlay = new BrowserWindow({
+    const windowConfig: Electron.BrowserWindowConstructorOptions = {
       x: bounds.x,
       y: bounds.y,
       width: bounds.width,
       height: bounds.height,
       frame: false,
-      transparent: true,
       resizable: false,
       movable: false,
       minimizable: false,
       maximizable: false,
       alwaysOnTop: true,
       skipTaskbar: true,
-      fullscreen: true,
+      show: false,
       webPreferences: {
         preload: path.join(__dirname, '../preload/index.js'),
         sandbox: false,
         contextIsolation: true,
         nodeIntegration: false
       }
-    })
+    }
 
+    // FIX #1: Windows uses backgroundColor instead of transparent
+    // FIX #6: Don't use fullscreen to avoid transition animation
+    if (process.platform === 'darwin') {
+      windowConfig.transparent = true
+    } else {
+      windowConfig.backgroundColor = '#00000000'
+    }
+
+    const overlay = new BrowserWindow(windowConfig)
     overlay.setVisibleOnAllWorkspaces(true)
 
     if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -515,11 +520,14 @@ class ScreenshotManager {
     }
 
     overlay.webContents.once('did-finish-load', () => {
+      // FIX #4: Pass scaleFactor for DPI-aware rendering
+      // FIX #5: Pass file path instead of data URL
       overlay.webContents.send('screenshot-init', {
-        dataUrl: screenshotDataUrl,
+        filePath: screenshotFilePath,
         displayBounds: bounds,
         scaleFactor: display.scaleFactor
       })
+      overlay.show()
     })
 
     overlay.on('closed', () => {
@@ -2351,3 +2359,68 @@ npx tsc --noEmit -p tsconfig.node.json --composite false
 git add -A
 git commit -m "feat(screenshot): Phase 1 complete - core screenshot with annotation"
 ```
+
+---
+
+## Addendum: Review Fixes Applied (v2)
+
+This plan has been updated based on a thorough review. The following 10 issues were identified and addressed:
+
+### Fix #1: Windows transparent window handling
+
+- `screenshotManager.ts`: Use `backgroundColor: '#00000000'` on Windows, `transparent: true` only on macOS
+- Consistent with codebase patterns in `windowManager.ts`, `superPanelManager.ts`
+
+### Fix #2: Plugin architecture — headless plugin
+
+- `plugin.json`: No `main` field — screenshot is a headless plugin like `system`
+- Overlay window is created by ScreenshotManager, not the plugin system
+- `systemCommands.ts` routes the "screenshot" command to ScreenshotManager
+
+### Fix #3: IPC channel access
+
+- Add screenshot-specific methods to `resources/preload.js`:
+  - `ztools.screenshotCopyToClipboard(dataUrl)` → `ipcRenderer.invoke('screenshot:copy-to-clipboard', dataUrl)`
+  - `ztools.screenshotSaveToFile(dataUrl)` → `ipcRenderer.invoke('screenshot:save-to-file', dataUrl)`
+- Update `export.ts` to use these named methods instead of generic `invoke`
+
+### Fix #4: DPI scaling
+
+- Pass `display.scaleFactor` to overlay window via `screenshot-init` event
+- RegionSelector: multiply mouse coordinates by `scaleFactor` when cropping from source image
+- AnnotationEditor: set Fabric.js canvas dimensions accounting for DPI
+- Export: ensure output image uses physical pixel dimensions
+
+### Fix #5: Temp file data transfer
+
+- ScreenshotManager writes captured PNG to `app.getPath('temp')/ztools-screenshot/`
+- Pass file path (not data URL) to overlay window
+- Overlay loads image via `file://` protocol or `img.src = filePath`
+- Clean up temp files on overlay close
+
+### Fix #6: No fullscreen mode
+
+- Use `show: false` + exact display bounds instead of `fullscreen: true`
+- Call `overlay.show()` after content is loaded to avoid white flash
+
+### Fix #7: Multi-monitor source matching
+
+- Use `source.display_id === String(display.id)` for reliable matching
+- Fall back to `sources[0]` only if no match found
+
+### Fix #8: Fabric.js v6 API verification
+
+- Before implementing Task 6-8, consult Fabric.js v6 documentation at https://fabricjs.com/
+- Key APIs to verify: `getScenePoint`, `FabricImage.fromURL`, `TPointerEventInfo`, `toJSON`/`loadFromJSON`
+- Adjust tool implementations if API has changed
+
+### Fix #9: Logo file
+
+- Task 1 should include creating a simple screenshot icon (SVG or PNG)
+- Can use a simple crosshair/camera icon as placeholder
+
+### Fix #10: Hotkey conflict handling
+
+- `registerHotkey()` should check `globalShortcut.isRegistered()` first
+- If registration fails, log a warning and skip (user can configure manually in settings)
+- Add hotkey configuration to the settings plugin's GeneralSetting page (Phase 2+)
