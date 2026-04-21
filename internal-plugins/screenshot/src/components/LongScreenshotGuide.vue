@@ -79,7 +79,7 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 
 const props = defineProps<{
-  screenshotFilePath: string
+  screenshotDataUrl: string
   scaleFactor: number
 }>()
 
@@ -171,11 +171,7 @@ function loadPreview() {
     ctx.fillRect(0, 0, canvas.width, canvas.height)
   }
 
-  if (props.screenshotFilePath.startsWith('data:')) {
-    bgImage.src = props.screenshotFilePath
-  } else {
-    bgImage.src = 'file://' + props.screenshotFilePath.replace(/\\/g, '/')
-  }
+  bgImage.src = props.screenshotDataUrl
 }
 
 function onMouseDown(e: MouseEvent) {

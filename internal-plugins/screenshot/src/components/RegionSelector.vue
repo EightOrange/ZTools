@@ -39,7 +39,7 @@ import { ref, computed, onMounted, nextTick } from 'vue'
 import MagnifierWidget from './MagnifierWidget.vue'
 
 const props = defineProps<{
-  screenshotFilePath: string
+  screenshotDataUrl: string
   scaleFactor: number
 }>()
 
@@ -114,7 +114,7 @@ onMounted(async () => {
 
 function loadBackground(): void {
   const canvas = bgCanvasRef.value
-  if (!canvas || !props.screenshotFilePath) return
+  if (!canvas || !props.screenshotDataUrl) return
   const img = new Image()
   img.onload = () => {
     canvas.width = window.innerWidth * props.scaleFactor
@@ -126,7 +126,7 @@ function loadBackground(): void {
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
     }
   }
-  img.src = `file://${props.screenshotFilePath}`
+  img.src = props.screenshotDataUrl
 }
 
 function onMouseDown(e: MouseEvent): void {

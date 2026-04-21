@@ -2,7 +2,7 @@
   <div class="screenshot-overlay">
     <RegionSelector
       v-if="mode === 'select'"
-      :screenshot-file-path="screenshotFilePath"
+      :screenshot-data-url="screenshotDataUrl"
       :scale-factor="scaleFactor"
       @region-selected="onRegionSelected"
       @cancel="onCancel"
@@ -17,7 +17,7 @@
     />
     <LongScreenshotGuide
       v-else-if="mode === 'long-screenshot'"
-      :screenshot-file-path="screenshotFilePath"
+      :screenshot-data-url="screenshotDataUrl"
       :scale-factor="scaleFactor"
       @done="onLongScreenshotDone"
       @cancel="onCancel"
@@ -39,7 +39,7 @@ interface Region {
 }
 
 const mode = ref<'select' | 'annotate' | 'long-screenshot'>('select')
-const screenshotFilePath = ref('')
+const screenshotDataUrl = ref('')
 const scaleFactor = ref(1)
 const croppedImageDataUrl = ref('')
 const selectedRegion = ref<Region>({ x: 0, y: 0, width: 0, height: 0 })
@@ -49,8 +49,10 @@ const bridge = (window as any).__screenshotBridge
 onMounted(() => {
   if (bridge) {
     bridge.onInit((data: any) => {
-      screenshotFilePath.value = data.filePath
       scaleFactor.value = data.scaleFactor || 1
+      if (data.filePath && bridge.readFileAsDataUrl) {
+        screenshotDataUrl.value = bridge.readFileAsDataUrl(data.filePath)
+      }
     })
   }
 })

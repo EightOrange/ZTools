@@ -1,8 +1,19 @@
 const { ipcRenderer } = require('electron')
+const fs = require('fs')
 
 window.__screenshotBridge = {
   onInit(callback) {
     ipcRenderer.on('screenshot-init', (_event, data) => callback(data))
+  },
+  readFileAsDataUrl(filePath) {
+    try {
+      const buffer = fs.readFileSync(filePath)
+      const base64 = buffer.toString('base64')
+      return `data:image/png;base64,${base64}`
+    } catch (err) {
+      console.error('[screenshot-preload] Failed to read file:', err)
+      return ''
+    }
   },
   cancel() {
     ipcRenderer.send('screenshot:cancel')

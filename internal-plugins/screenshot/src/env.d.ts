@@ -9,6 +9,7 @@ declare module '*.vue' {
 interface Window {
   __screenshotBridge?: {
     onInit: (callback: (data: any) => void) => void
+    readFileAsDataUrl: (filePath: string) => string
     cancel: () => void
     copyToClipboard: (dataUrl: string) => Promise<{ success: boolean }>
     saveToFile: (dataUrl: string) => Promise<{ success: boolean; path?: string }>
