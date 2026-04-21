@@ -9,6 +9,10 @@ export default defineConfig({
     strictPort: true,
     open: false
   },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true
+  },
   plugins: [vue()],
   resolve: {
     alias: {

@@ -84,9 +84,9 @@ class ScreenshotManager {
       skipTaskbar: true,
       show: false,
       webPreferences: {
-        preload: path.join(__dirname, '../../resources/preload.js'),
+        preload: path.join(__dirname, '../../resources/screenshot-preload.js'),
         sandbox: false,
-        contextIsolation: true,
+        contextIsolation: false,
         nodeIntegration: false
       }
     }
@@ -100,8 +100,18 @@ class ScreenshotManager {
     const overlay = new BrowserWindow(windowConfig)
     overlay.setVisibleOnAllWorkspaces(true)
 
-    const pluginHtmlPath = this.getPluginHtmlPath()
-    overlay.loadFile(pluginHtmlPath)
+    if (app.isPackaged) {
+      const pluginHtmlPath = path.join(
+        process.resourcesPath,
+        'app.asar.unpacked',
+        'internal-plugins',
+        'screenshot',
+        'index.html'
+      )
+      overlay.loadFile(pluginHtmlPath)
+    } else {
+      overlay.loadURL('http://localhost:5178')
+    }
 
     overlay.webContents.once('did-finish-load', () => {
       overlay.webContents.send('screenshot-init', {
@@ -118,19 +128,6 @@ class ScreenshotManager {
     })
 
     this.overlayWindows.push(overlay)
-  }
-
-  private getPluginHtmlPath(): string {
-    if (app.isPackaged) {
-      return path.join(
-        process.resourcesPath,
-        'app.asar.unpacked',
-        'internal-plugins',
-        'screenshot',
-        'index.html'
-      )
-    }
-    return path.join(process.cwd(), 'internal-plugins', 'screenshot', 'public', 'index.html')
   }
 
   closeAllOverlays(): void {

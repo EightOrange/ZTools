@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "全功能截图工具：截图、标注、OCR、长截图、悬浮窗",
   "author": "ZTools",
-  "logo": "logo.png",
+  "logo": "logo.svg",
   "features": [
     {
       "code": "screenshot",

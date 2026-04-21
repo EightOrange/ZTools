@@ -35,10 +35,11 @@ const scaleFactor = ref(1)
 const croppedImageDataUrl = ref('')
 const selectedRegion = ref<Region>({ x: 0, y: 0, width: 0, height: 0 })
 
+const bridge = (window as any).__screenshotBridge
+
 onMounted(() => {
-  const { ipcRenderer } = (window as any).electron || {}
-  if (ipcRenderer) {
-    ipcRenderer.on('screenshot-init', (_event: unknown, data: any) => {
+  if (bridge) {
+    bridge.onInit((data: any) => {
       screenshotFilePath.value = data.filePath
       scaleFactor.value = data.scaleFactor || 1
     })
@@ -52,21 +53,36 @@ function onRegionSelected(region: Region, croppedDataUrl: string) {
 }
 
 function onCancel() {
-  const ztools = (window as any).ztools
-  if (ztools) {
-    ztools.send?.('screenshot:cancel')
+  if (bridge) {
+    bridge.cancel()
+  } else {
+    window.close()
   }
 }
 
 function onDone() {
-  const ztools = (window as any).ztools
-  if (ztools) {
-    ztools.send?.('screenshot:cancel')
+  if (bridge) {
+    bridge.cancel()
+  } else {
+    window.close()
   }
 }
 </script>
 
 <style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 .screenshot-overlay {
   width: 100%;
   height: 100%;
