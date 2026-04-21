@@ -29,6 +29,9 @@
       <div class="separator" />
       <button class="action-btn" title="OCR 文字识别" @click="$emit('ocr')">Aa</button>
       <button class="action-btn" title="悬浮窗" @click="$emit('pin')">📌</button>
+      <button class="action-btn long-shot" title="长截图" @click="$emit('long-screenshot')">
+        ⇕
+      </button>
       <div class="separator" />
       <button class="action-btn save" title="保存" @click="$emit('save')">💾</button>
       <button class="action-btn primary" title="复制到剪贴板" @click="$emit('copy')">✓</button>
@@ -61,6 +64,7 @@ defineEmits<{
   save: []
   ocr: []
   pin: []
+  'long-screenshot': []
   cancel: []
 }>()
 
@@ -167,5 +171,10 @@ const toolbarStyle = computed(() => ({
 
 .action-btn.save:hover {
   background: #444;
+}
+
+.action-btn.long-shot {
+  font-size: 18px;
+  font-weight: bold;
 }
 </style>

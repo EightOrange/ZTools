@@ -13,6 +13,14 @@
       :region="selectedRegion"
       @done="onDone"
       @cancel="onCancel"
+      @long-screenshot="onEnterLongScreenshot"
+    />
+    <LongScreenshotGuide
+      v-else-if="mode === 'long-screenshot'"
+      :screenshot-file-path="screenshotFilePath"
+      :scale-factor="scaleFactor"
+      @done="onLongScreenshotDone"
+      @cancel="onCancel"
     />
   </div>
 </template>
@@ -21,6 +29,7 @@
 import { ref, onMounted } from 'vue'
 import RegionSelector from './components/RegionSelector.vue'
 import AnnotationEditor from './components/AnnotationEditor.vue'
+import LongScreenshotGuide from './components/LongScreenshotGuide.vue'
 
 interface Region {
   x: number
@@ -29,7 +38,7 @@ interface Region {
   height: number
 }
 
-const mode = ref<'select' | 'annotate'>('select')
+const mode = ref<'select' | 'annotate' | 'long-screenshot'>('select')
 const screenshotFilePath = ref('')
 const scaleFactor = ref(1)
 const croppedImageDataUrl = ref('')
@@ -49,6 +58,21 @@ onMounted(() => {
 function onRegionSelected(region: Region, croppedDataUrl: string) {
   selectedRegion.value = region
   croppedImageDataUrl.value = croppedDataUrl
+  mode.value = 'annotate'
+}
+
+function onEnterLongScreenshot() {
+  mode.value = 'long-screenshot'
+}
+
+function onLongScreenshotDone(dataUrl: string) {
+  croppedImageDataUrl.value = dataUrl
+  selectedRegion.value = {
+    x: 0,
+    y: 0,
+    width: window.innerWidth,
+    height: Math.min(window.innerHeight, 800)
+  }
   mode.value = 'annotate'
 }
 

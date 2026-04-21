@@ -23,5 +23,19 @@ interface Window {
       error?: string
     }>
     pin: (dataUrl: string) => Promise<{ success: boolean; windowId?: number }>
+    longScreenshotStart: (options: {
+      region: { x: number; y: number; width: number; height: number }
+      scrollDelta?: number
+      frameDelay?: number
+      maxFrames?: number
+    }) => Promise<{ success: boolean; dataUrl?: string; error?: string }>
+    longScreenshotStop: () => void
+    onLongScreenshotProgress: (
+      callback: (progress: {
+        frameCount: number
+        maxFrames: number
+        status: 'capturing' | 'stitching' | 'done' | 'error'
+      }) => void
+    ) => void
   }
 }

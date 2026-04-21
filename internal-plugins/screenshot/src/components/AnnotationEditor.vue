@@ -18,6 +18,7 @@
       @save="onSave"
       @ocr="onOcr"
       @pin="onPin"
+      @long-screenshot="$emit('long-screenshot')"
       @cancel="$emit('cancel')"
     />
     <OcrResultPanel
@@ -50,6 +51,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   done: [dataUrl: string]
   cancel: []
+  'long-screenshot': []
 }>()
 
 const fabricCanvasRef = ref<HTMLCanvasElement>()

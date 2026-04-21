@@ -18,5 +18,14 @@ window.__screenshotBridge = {
   },
   pin(dataUrl) {
     return ipcRenderer.invoke('screenshot:pin', dataUrl)
+  },
+  longScreenshotStart(options) {
+    return ipcRenderer.invoke('screenshot:long-start', options)
+  },
+  longScreenshotStop() {
+    ipcRenderer.send('screenshot:long-stop')
+  },
+  onLongScreenshotProgress(callback) {
+    ipcRenderer.on('screenshot:long-progress', (_event, progress) => callback(progress))
   }
 }

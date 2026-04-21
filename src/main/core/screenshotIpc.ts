@@ -1,8 +1,9 @@
-import { ipcMain, clipboard, nativeImage, dialog } from 'electron'
+import { ipcMain, clipboard, nativeImage, dialog, BrowserWindow } from 'electron'
 import { promises as fs } from 'fs'
 import screenshotManager from './screenshotManager.js'
 import ocrService from './ocrService.js'
 import pinWindowManager from './pinWindowManager.js'
+import longScreenshotService from './longScreenshotService.js'
 
 export function setupScreenshotIpc(): void {
   ipcMain.on('screenshot:cancel', () => {
@@ -78,11 +79,54 @@ export function setupScreenshotIpc(): void {
   ipcMain.on('pin:restore-size', (event) => {
     const win = event.sender
     if (win) {
-      const browserWindow = require('electron').BrowserWindow.fromWebContents(win)
+      const browserWindow = BrowserWindow.fromWebContents(win)
       if (browserWindow) {
         const bounds = browserWindow.getBounds()
         browserWindow.setSize(bounds.width, bounds.height)
       }
     }
+  })
+
+  ipcMain.handle(
+    'screenshot:long-start',
+    async (
+      event,
+      options: { region: any; scrollDelta?: number; frameDelay?: number; maxFrames?: number }
+    ) => {
+      try {
+        screenshotManager.closeAllOverlays()
+
+        const resultPath = await longScreenshotService.startCapture(
+          {
+            region: options.region,
+            scrollDelta: options.scrollDelta,
+            frameDelay: options.frameDelay,
+            maxFrames: options.maxFrames
+          },
+          (progress) => {
+            const sender = event.sender
+            if (!sender.isDestroyed()) {
+              sender.send('screenshot:long-progress', progress)
+            }
+          }
+        )
+
+        const imageBuffer = await fs.readFile(resultPath)
+        const dataUrl = `data:image/png;base64,${imageBuffer.toString('base64')}`
+
+        await longScreenshotService.cleanup()
+        return { success: true, dataUrl }
+      } catch (error) {
+        console.error('[Screenshot] Long screenshot failed:', error)
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error)
+        }
+      }
+    }
+  )
+
+  ipcMain.on('screenshot:long-stop', () => {
+    longScreenshotService.stop()
   })
 }
