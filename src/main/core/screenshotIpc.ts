@@ -1,6 +1,8 @@
 import { ipcMain, clipboard, nativeImage, dialog } from 'electron'
 import { promises as fs } from 'fs'
 import screenshotManager from './screenshotManager.js'
+import ocrService from './ocrService.js'
+import pinWindowManager from './pinWindowManager.js'
 
 export function setupScreenshotIpc(): void {
   ipcMain.on('screenshot:cancel', () => {
@@ -46,6 +48,41 @@ export function setupScreenshotIpc(): void {
     } catch (error) {
       console.error('[Screenshot] Save to file failed:', error)
       return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('screenshot:ocr', async (_event, dataUrl: string, lang?: string) => {
+    try {
+      const result = await ocrService.recognize(dataUrl, lang || 'zh-Hans')
+      return { success: true, ...result }
+    } catch (error) {
+      console.error('[Screenshot] OCR failed:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      }
+    }
+  })
+
+  ipcMain.handle('screenshot:pin', async (_event, dataUrl: string) => {
+    try {
+      screenshotManager.closeAllOverlays()
+      const windowId = await pinWindowManager.createPinWindow(dataUrl)
+      return { success: true, windowId }
+    } catch (error) {
+      console.error('[Screenshot] Pin failed:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.on('pin:restore-size', (event) => {
+    const win = event.sender
+    if (win) {
+      const browserWindow = require('electron').BrowserWindow.fromWebContents(win)
+      if (browserWindow) {
+        const bounds = browserWindow.getBounds()
+        browserWindow.setSize(bounds.width, bounds.height)
+      }
     }
   })
 }

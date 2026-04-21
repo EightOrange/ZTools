@@ -16,6 +16,7 @@ import { startInternalPluginServer } from './core/internalPluginServer'
 import pluginManager from './managers/pluginManager'
 import windowManager from './managers/windowManager'
 import screenshotManager from './core/screenshotManager'
+import pinWindowManager from './core/pinWindowManager'
 import { setupScreenshotIpc } from './core/screenshotIpc'
 
 // Windows 平台需要设置 AppUserModelId 才能让单例锁正常工作
@@ -211,8 +212,9 @@ app.on('will-quit', () => {
   appWatcher.stop()
   // 清理悬浮球
   floatingBallManager.cleanup()
-  // 清理截图管理器
+  // 清理截图管理器和悬浮窗
   screenshotManager.cleanup()
+  pinWindowManager.cleanup()
   // 关闭 HTTP 服务器
   httpServer.stop()
   // 关闭 MCP 服务器

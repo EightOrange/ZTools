@@ -16,7 +16,17 @@
       @redo="history.redo"
       @copy="onCopy"
       @save="onSave"
+      @ocr="onOcr"
+      @pin="onPin"
       @cancel="$emit('cancel')"
+    />
+    <OcrResultPanel
+      v-if="showOcr"
+      :text="ocrText"
+      :loading="ocrLoading"
+      :error="ocrError"
+      :engine="ocrEngine"
+      @close="showOcr = false"
     />
   </div>
 </template>
@@ -25,9 +35,12 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { Canvas as FabricCanvas, FabricImage } from 'fabric'
 import Toolbar from './Toolbar.vue'
+import OcrResultPanel from './OcrResultPanel.vue'
 import { useAnnotationHistory } from '../composables/useAnnotationHistory'
 import { useToolManager } from '../composables/useToolManager'
 import { canvasToDataUrl, copyToClipboard, saveToFile } from '../utils/export'
+
+const bridge = (window as any).__screenshotBridge
 
 const props = defineProps<{
   imageDataUrl: string
@@ -46,6 +59,12 @@ const fabricCanvasRef2 = ref<FabricCanvas | null>(null)
 
 const history = useAnnotationHistory(() => fabricCanvasRef2.value)
 const toolManager = useToolManager(fabricCanvasRef2, () => history.saveState())
+
+const showOcr = ref(false)
+const ocrText = ref('')
+const ocrLoading = ref(false)
+const ocrError = ref('')
+const ocrEngine = ref('')
 
 const canvasStyle = computed(() => ({
   left: props.region.x + 'px',
@@ -111,6 +130,43 @@ async function onSave(): Promise<void> {
   if (!fabricCanvas) return
   const dataUrl = canvasToDataUrl(fabricCanvas)
   await saveToFile(dataUrl)
+}
+
+async function onOcr(): Promise<void> {
+  if (!fabricCanvas) return
+  showOcr.value = true
+  ocrLoading.value = true
+  ocrError.value = ''
+  ocrText.value = ''
+  ocrEngine.value = ''
+
+  try {
+    const dataUrl = canvasToDataUrl(fabricCanvas)
+    if (bridge?.ocr) {
+      const result = await bridge.ocr(dataUrl)
+      if (result.success) {
+        ocrText.value = result.text
+        ocrEngine.value = result.engine || ''
+      } else {
+        ocrError.value = result.error || '识别失败'
+      }
+    } else {
+      ocrError.value = 'OCR 功能不可用'
+    }
+  } catch (err) {
+    ocrError.value = err instanceof Error ? err.message : '未知错误'
+  } finally {
+    ocrLoading.value = false
+  }
+}
+
+async function onPin(): Promise<void> {
+  if (!fabricCanvas) return
+  const dataUrl = canvasToDataUrl(fabricCanvas)
+  if (bridge?.pin) {
+    await bridge.pin(dataUrl)
+  }
+  emit('done', dataUrl)
 }
 </script>
 

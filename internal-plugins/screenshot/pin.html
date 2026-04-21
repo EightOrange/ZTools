@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: transparent;
+      }
+      body {
+        -webkit-app-region: drag;
+        cursor: move;
+      }
+      img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        pointer-events: none;
+        user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <img id="pinImage" />
+    <script>
+      const bridge = window.__screenshotBridge
+      if (bridge) {
+        bridge.onInit = null
+      }
+
+      const { ipcRenderer } = require('electron')
+
+      ipcRenderer.on('pin-init', (_event, data) => {
+        document.getElementById('pinImage').src = 'file://' + data.filePath
+      })
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') window.close()
+      })
+
+      document.addEventListener('dblclick', () => {
+        ipcRenderer.send('pin:restore-size')
+      })
+
+      let opacity = 1.0
+      document.addEventListener(
+        'wheel',
+        (e) => {
+          if (e.ctrlKey) {
+            e.preventDefault()
+            opacity = Math.max(0.3, Math.min(1, opacity + (e.deltaY > 0 ? -0.05 : 0.05)))
+            document.body.style.opacity = opacity
+          }
+        },
+        { passive: false }
+      )
+    </script>
+  </body>
+</html>

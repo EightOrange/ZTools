@@ -12,5 +12,16 @@ interface Window {
     cancel: () => void
     copyToClipboard: (dataUrl: string) => Promise<{ success: boolean }>
     saveToFile: (dataUrl: string) => Promise<{ success: boolean; path?: string }>
+    ocr: (
+      dataUrl: string,
+      lang?: string
+    ) => Promise<{
+      success: boolean
+      text?: string
+      lines?: Array<{ text: string }>
+      engine?: string
+      error?: string
+    }>
+    pin: (dataUrl: string) => Promise<{ success: boolean; windowId?: number }>
   }
 }

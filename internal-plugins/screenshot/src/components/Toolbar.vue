@@ -27,6 +27,9 @@
       <button class="action-btn" title="撤销" :disabled="!canUndo" @click="$emit('undo')">↶</button>
       <button class="action-btn" title="重做" :disabled="!canRedo" @click="$emit('redo')">↷</button>
       <div class="separator" />
+      <button class="action-btn" title="OCR 文字识别" @click="$emit('ocr')">Aa</button>
+      <button class="action-btn" title="悬浮窗" @click="$emit('pin')">📌</button>
+      <div class="separator" />
       <button class="action-btn save" title="保存" @click="$emit('save')">💾</button>
       <button class="action-btn primary" title="复制到剪贴板" @click="$emit('copy')">✓</button>
       <button class="action-btn cancel" title="取消" @click="$emit('cancel')">✕</button>
@@ -56,6 +59,8 @@ defineEmits<{
   redo: []
   copy: []
   save: []
+  ocr: []
+  pin: []
   cancel: []
 }>()
 
